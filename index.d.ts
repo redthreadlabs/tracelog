@@ -52,6 +52,10 @@ declare namespace apm {
       callback?: CaptureErrorCallback
     ): void;
 
+    // Custom events
+    captureEvent (type: string, options?: CaptureEventOptions, callback?: Function): void;
+    captureEvents (events: CaptureEventData[], callback?: Function): void;
+
     // Distributed Tracing
     currentTraceparent: string | null;
     currentTraceIds: {
@@ -111,6 +115,7 @@ declare namespace apm {
     addErrorFilter (fn: FilterFn): void;
     addSpanFilter (fn: FilterFn): void;
     addTransactionFilter (fn: FilterFn): void;
+    addEventFilter (fn: FilterFn): void;
     addMetadataFilter (fn: FilterFn): void;
     flush (): Promise<void>;
     flush (callback?: Function): void;
@@ -290,6 +295,51 @@ declare namespace apm {
     useElasticTraceparentHeader?: boolean;
     usePathAsTransactionName?: boolean;
     verifyServerCert?: boolean;
+
+    // Tracelog: output & rotation
+    logFilePath?: string;
+    logMaxFileSize?: number;
+    logFlushIntervalMs?: number;
+    logRotationSchedule?: 'daily' | 'hourly' | string;
+    maxLocalRetentionDays?: number;
+    maxBufferSize?: number;
+
+    // Tracelog: S3 upload
+    s3Bucket?: string;
+    s3Region?: string;
+    s3KeyTemplate?: string;
+    s3UploadIntervalMs?: number;
+    s3AccessKeyId?: string;
+    s3SecretAccessKey?: string;
+    s3SessionToken?: string;
+  }
+
+  interface CaptureEventOptions {
+    message?: string;
+    level?: 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+    timestamp?: number;
+    duration?: number;
+    user?: EventUserInfo;
+    client?: EventClientInfo;
+    params?: { [key: string]: any };
+  }
+
+  interface CaptureEventData extends CaptureEventOptions {
+    type: string;
+  }
+
+  interface EventUserInfo {
+    id?: string;
+    email?: string;
+    username?: string;
+  }
+
+  interface EventClientInfo {
+    name?: string;
+    version?: string;
+    os?: { name?: string; version?: string };
+    device?: { model?: string; type?: string };
+    runtime?: { name?: string; version?: string };
   }
 
   interface CaptureErrorOptions {
