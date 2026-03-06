@@ -24,8 +24,9 @@ lib/instrumentation/        # Module patching (RITM/IITM hooks), run context
 lib/apm-client/
   apm-client.js             # Client factory — creates JsonlFileClient or NoopApmClient
   jsonl-file-client.js      # JSONL file transport (buffering, rotation, truncation)
-  noop-apm-client.js        # No-op client for disableSend mode
-  http-apm-client/          # Legacy HTTP client (kept for ndjson.js and truncate.js utils)
+  noop-apm-client.js        # No-op client for contextPropagationOnly mode
+  ndjson.js                 # NDJSON serialization utility
+  truncate.js               # Field truncation for APM data model
 lib/cloud-metadata/         # AWS/Azure/GCP instance metadata detection
 lib/errors.js               # Error capture and encoding
 lib/tracecontext/           # W3C Trace Context (traceparent/tracestate)
