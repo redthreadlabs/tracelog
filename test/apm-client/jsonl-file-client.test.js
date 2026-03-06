@@ -390,6 +390,81 @@ test('calls s3Uploader.uploadCurrent on destroy', (t) => {
   t.end();
 });
 
+// --- Orphaned file upload on startup ---
+
+test('uploads orphaned files from previous runs on startup', (t) => {
+  const dir = tmpDir();
+  const clock = () => new Date('2026-06-15T10:00:00Z');
+
+  // Simulate orphaned files from previous days.
+  fs.writeFileSync(
+    path.join(dir, 'tracelog-2026-06-13.jsonl'),
+    '{"metadata":{}}\n{"transaction":{"name":"old1"}}\n',
+  );
+  fs.writeFileSync(
+    path.join(dir, 'tracelog-2026-06-14.jsonl'),
+    '{"metadata":{}}\n{"transaction":{"name":"old2"}}\n',
+  );
+
+  const uploadedFiles = [];
+  const mockUploader = {
+    uploadCompleted(filePath) {
+      uploadedFiles.push(filePath);
+    },
+    uploadCurrent() {},
+  };
+
+  const client = makeClient(dir, {
+    clock,
+    rotationSchedule: 'daily',
+    s3Uploader: mockUploader,
+  });
+
+  // Orphaned files from days 13 and 14 should be uploaded on startup.
+  t.equal(uploadedFiles.length, 2, 'two orphaned files uploaded');
+  t.ok(
+    uploadedFiles.some((f) => f.includes('06-13')),
+    'day 13 orphan uploaded',
+  );
+  t.ok(
+    uploadedFiles.some((f) => f.includes('06-14')),
+    'day 14 orphan uploaded',
+  );
+
+  client.destroy();
+  t.end();
+});
+
+test('does not upload current period file as orphan', (t) => {
+  const dir = tmpDir();
+  const clock = () => new Date('2026-06-15T10:00:00Z');
+
+  // Create a file for the current period (day 15)
+  fs.writeFileSync(
+    path.join(dir, 'tracelog-2026-06-15.jsonl'),
+    '{"metadata":{}}\n',
+  );
+
+  const uploadedFiles = [];
+  const mockUploader = {
+    uploadCompleted(filePath) {
+      uploadedFiles.push(filePath);
+    },
+    uploadCurrent() {},
+  };
+
+  const client = makeClient(dir, {
+    clock,
+    rotationSchedule: 'daily',
+    s3Uploader: mockUploader,
+  });
+
+  t.equal(uploadedFiles.length, 0, 'current period file not uploaded as orphan');
+
+  client.destroy();
+  t.end();
+});
+
 // --- Destroy behavior ---
 
 test('destroy stops accepting new events', (t) => {
