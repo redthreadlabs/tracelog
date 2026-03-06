@@ -89,6 +89,8 @@ The following were removed from the Elastic APM agent:
 - OpenTelemetry bridge and metrics
 - Central config polling from APM server
 - Elastic-specific CI/CD, Docker, docs, and examples
+- All `ELASTIC_APM_*` env vars renamed to `TRACELOG_*`
+- Config file default renamed from `elastic-apm-node.js` to `tracelog.config.js`
 
 ## Development
 
