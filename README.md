@@ -54,7 +54,6 @@ All options can be set via `require('tracelog').start({...})` or via environment
 | `logMaxFileSize` | — | `104857600` (100MB) | Rotate when file exceeds this size in bytes |
 | `logMaxFiles` | — | `10` | Number of rotated files to keep |
 | `logFlushIntervalMs` | — | `1000` | How often to flush the write buffer (ms) |
-| `disableSend` | `TRACELOG_DISABLE_SEND` | `false` | Disable all file output (context propagation only) |
 
 ### Service identity
 
@@ -91,7 +90,6 @@ All options can be set via `require('tracelog').start({...})` or via environment
 | `transactionSampleRate` | `TRACELOG_TRANSACTION_SAMPLE_RATE` | `1.0` | Fraction of transactions to sample (0.0 to 1.0) |
 | `transactionMaxSpans` | `TRACELOG_TRANSACTION_MAX_SPANS` | `500` | Max spans per transaction (-1 for unlimited) |
 | `exitSpanMinDuration` | `TRACELOG_EXIT_SPAN_MIN_DURATION` | `0ms` | Minimum duration for exit spans; shorter ones are dropped |
-| `maxQueueSize` | `TRACELOG_MAX_QUEUE_SIZE` | `1024` | Max queued events before dropping |
 | `longFieldMaxLength` | `TRACELOG_LONG_FIELD_MAX_LENGTH` | `10000` | Max length for long string fields (e.g. SQL statements) |
 
 ### Error capture
