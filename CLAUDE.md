@@ -2,11 +2,8 @@
 
 Tracelog is a fork of [elastic-apm-node](https://github.com/elastic/apm-agent-nodejs) that writes APM instrumentation data to local JSONL files instead of shipping to an Elastic APM server.
 
-## Project overview
-
-- **Purpose**: Capture transactions, spans, errors, and metrics from Node.js applications and write them as JSONL (newline-delimited JSON) to disk, with file rotation and optional S3 upload (planned).
-- **Origin**: Forked from `elastic-apm-node` v4.15.0 (BSD-2-Clause). The full instrumentation layer (43 module patchers), async context tracking, and data model are preserved. The HTTP transport was replaced with a JSONL file writer.
-- **License**: BSD-2-Clause. Existing source files retain their Elasticsearch copyright headers as required.
+- **Origin**: Forked from `elastic-apm-node` v4.15.0 (BSD-2-Clause). The full instrumentation layer (43 module patchers), async context tracking, and data model are preserved.
+- **License**: BSD-2-Clause. Existing source files retain their Elasticsearch copyright headers.
 
 ## Architecture
 
@@ -25,7 +22,7 @@ lib/apm-client/
   apm-client.js             # Client factory — creates JsonlFileClient or NoopApmClient
   jsonl-file-client.js      # JSONL file transport (buffering, rotation, truncation)
   noop-apm-client.js        # No-op client for contextPropagationOnly mode
-  s3-uploader.js            # S3 upload (gzip completed files, upload current on timer)
+  s3-uploader.js            # S3 upload (gzip, completed/current file handling)
   ndjson.js                 # NDJSON serialization utility
   truncate.js               # Field truncation for APM data model
 lib/cloud-metadata/         # AWS/Azure/GCP instance metadata detection
@@ -38,64 +35,39 @@ lib/stacktraces.js          # Stack trace capture and parsing
 
 ## Key conventions
 
-- **CommonJS** (`require`/`module.exports`), not ESM. The `type` in package.json is `"commonjs"`.
+- **CommonJS** (`require`/`module.exports`), not ESM.
 - **Node.js >= 14.17.0** required.
-- **No TypeScript source** — all source is plain JavaScript. TypeScript types are in `index.d.ts` and `types/`.
+- **No TypeScript source** — all source is plain JavaScript. Types in `index.d.ts` and `types/`.
 - **Strict mode** — every source file uses `'use strict';`.
-- **Copyright headers** — all source files must have the BSD-2-Clause copyright header at the top. New files should include both Elasticsearch and Shaxpir Inc. copyright lines.
+- **Copyright headers** — BSD-2-Clause header at top. New files include both Elasticsearch and Shaxpir Inc. lines.
+- **Test framework** — `tape`.
 
 ## Data flow
 
 ```
 User code / auto-instrumentation
-  → Agent.startTransaction() / Agent.startSpan()
-    → Transaction/Span objects created, tracked via RunContext (AsyncLocalStorage)
-      → span.end() / trans.end()
-        → _encode() builds JSON payload
-          → Apply filters (span/transaction/error filters)
-            → JsonlFileClient.sendTransaction/sendSpan/sendError()
-              → Truncate fields, serialize as NDJSON
-                → Buffer in memory
-                  → Periodic flush (default 1s) appends to timestamped .jsonl file
-                    → Time-based rotation (daily/hourly) or size-based rotation
-                      → S3Uploader.uploadCompleted() → gzip, upload, delete local
-                      → S3Uploader.uploadCurrent() on timer and destroy()
+  → Agent.startTransaction() / startSpan() / captureError() / captureEvent()
+    → Objects tracked via RunContext (AsyncLocalStorage)
+      → end() / flush()
+        → Apply filters (transaction/span/error/event filters)
+          → JsonlFileClient.sendTransaction/sendSpan/sendError/sendEvent()
+            → Truncate fields, serialize as NDJSON, buffer in memory
+              → Periodic flush (default 1s) appends to timestamped .jsonl file
+                → Time-based rotation (daily/hourly) or size-based rotation
+                  → S3Uploader.uploadCompleted() → gzip, upload, delete local
+                  → S3Uploader.uploadCurrent() on timer and destroy()
 ```
 
-## Config options (tracelog-specific)
+## JSONL event types
 
-These are passed to `agent.start()` alongside the standard config options:
+Six record types: `metadata`, `transaction`, `span`, `error`, `metricset`, `event`. See [SCHEMA.md](SCHEMA.md) for full field documentation.
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `logDir` | `.` (cwd) | Directory for JSONL output files |
-| `logFilePrefix` | `tracelog` | Filename prefix (`{prefix}-{date}.jsonl`) |
-| `logMaxFileSize` | `104857600` (100MB) | Rotate file when it exceeds this size in bytes |
-| `logFlushIntervalMs` | `1000` | Buffer flush interval in milliseconds |
-| `logRotationSchedule` | `daily` | Time-based rotation: `daily` or `hourly` |
-| `cloudProvider` | `auto` | Cloud metadata detection: `auto`, `aws`, `gcp`, `azure`, or `none` |
-| `s3Bucket` | — | S3 bucket name (enables S3 upload if set) |
-| `s3Region` | from env | AWS region |
-| `s3KeyTemplate` | `{serviceName}/{environment}/{date}/{hostname}-{pid}-{timestamp}.jsonl` | S3 key template |
-| `s3UploadIntervalMs` | `60000` | How often to upload the current file to S3 |
-| `s3AccessKeyId` | from env | AWS access key ID |
-| `s3SecretAccessKey` | from env | AWS secret access key |
-| `s3SessionToken` | — | AWS session token (temporary credentials) |
+## Configuration
 
-## JSONL output format
-
-Each line is a self-contained JSON object. Files begin with a metadata line:
-
-```jsonl
-{"metadata":{"service":{"name":"my-api","version":"1.0.0","agent":{"name":"tracelog"}},"process":{"pid":1234},"system":{"hostname":"..."},"cloud":{...}}}
-{"transaction":{"id":"abc","trace_id":"def","name":"GET /users","duration":42.5,...}}
-{"span":{"id":"ghi","transaction_id":"abc","name":"SELECT * FROM users","type":"db","subtype":"postgresql",...}}
-{"error":{"message":"Something broke","exception":{"type":"TypeError","stacktrace":[...]}}}
-```
+See [CONFIG.md](CONFIG.md) for the full reference. Key tracelog-specific options: `logDir`, `logFilePrefix`, `logRotationSchedule`, `maxLocalRetentionDays`, `maxBufferSize`, `s3Bucket`, `s3GzipCompleted`, `s3GzipCurrent`.
 
 ## Removed from upstream
 
-The following were removed from the Elastic APM agent:
 - HTTP transport to APM server (replaced with JSONL file writer)
 - Lambda and Azure Functions support
 - OpenTelemetry bridge and metrics
@@ -112,22 +84,17 @@ npm test              # Run tests (tape)
 npm run lint          # ESLint
 ```
 
-## Testing changes
-
-When modifying the JSONL client or agent, a quick smoke test:
+### Quick smoke test
 
 ```js
 const apm = require('.');
-apm.start({ serviceName: 'test', logDir: '/tmp' });
+apm.start({ serviceName: 'test', logDir: '/tmp', cloudProvider: 'none' });
 const t = apm.startTransaction('test');
 t.end();
 apm.flush(() => {
-  console.log(require('fs').readFileSync('/tmp/test.jsonl', 'utf8'));
+  const fs = require('fs');
+  const files = fs.readdirSync('/tmp').filter(f => f.startsWith('tracelog-'));
+  console.log(fs.readFileSync('/tmp/' + files[0], 'utf8'));
   apm.destroy();
 });
 ```
-
-## Planned work
-
-- TypeScript type updates for new config options (`index.d.ts`)
-- Test suite adaptation (existing tests reference mock HTTP server)
