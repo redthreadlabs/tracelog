@@ -33,7 +33,7 @@ That's it. Tracelog will automatically instrument your HTTP servers, database cl
 
 ## Output format
 
-Each line is a self-contained JSON object with one top-level key identifying the event type. There are five event types: `metadata`, `transaction`, `span`, `error`, and `metricset`. Files start with a metadata line:
+Each line is a self-contained JSON object with one top-level key identifying the event type. There are six event types: `metadata`, `transaction`, `span`, `error`, `metricset`, and `event`. Files start with a metadata line:
 
 ```jsonl
 {"metadata":{"service":{"name":"my-api","version":"1.0.0"},"process":{"pid":1234},"system":{"hostname":"ip-10-0-1-42"},"cloud":{"provider":"aws","instance":{"id":"i-0abc123"},"availability_zone":"us-east-1a"}}}
@@ -41,6 +41,7 @@ Each line is a self-contained JSON object with one top-level key identifying the
 {"span":{"id":"ghi789","transaction_id":"abc123","trace_id":"def456","parent_id":"abc123","name":"SELECT * FROM users","type":"db","subtype":"postgresql","duration":12.3,"sync":true,"outcome":"success"}}
 {"error":{"id":"err001","timestamp":1709740800000000,"exception":{"message":"Something broke","type":"TypeError","handled":false,"stacktrace":[...]}}}
 {"metricset":{"timestamp":1709740800000000,"samples":{"system.process.cpu.total.norm.pct":{"value":0.023},"nodejs.memory.heap.used.bytes":{"value":52428800}}}}
+{"event":{"type":"page_view","timestamp":1719484200000,"message":"User viewed dashboard","level":"info","user":{"id":"u-abc123","username":"jane_doe"},"client":{"name":"shaxpir-ios","version":"2.4.1","os":{"name":"iOS","version":"18.2"},"device":{"model":"iPhone 16 Pro","type":"phone"}},"params":{"page":"/dashboard"}}}
 ```
 
 For the complete schema of every field in each event type, see **[SCHEMA.md](SCHEMA.md)**.

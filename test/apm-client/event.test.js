@@ -210,6 +210,65 @@ test('events interleaved with transactions and spans', (t) => {
   t.end();
 });
 
+// --- Batch sendEvent ---
+
+test('batch of events written in order', (t) => {
+  const dir = tmpDir();
+  const client = makeClient(dir);
+
+  const events = [
+    { type: 'page_view', timestamp: 1000, params: { page: '/home' } },
+    { type: 'button_click', timestamp: 2000, params: { button: 'submit' } },
+    { type: 'log', timestamp: 3000, message: 'debug info', level: 'debug' },
+    { type: 'purchase', timestamp: 4000, duration: 500, user: { id: 'u1' }, params: { amount: 9.99 } },
+  ];
+
+  for (const ev of events) {
+    client.sendEvent(ev);
+  }
+  client.flush();
+
+  const files = listFiles(dir);
+  const lines = readLines(path.join(dir, files[0]));
+  t.equal(lines.length, 5, 'metadata + 4 events');
+
+  t.equal(lines[1].event.type, 'page_view');
+  t.equal(lines[2].event.type, 'button_click');
+  t.equal(lines[3].event.type, 'log');
+  t.equal(lines[3].event.level, 'debug');
+  t.equal(lines[4].event.type, 'purchase');
+  t.equal(lines[4].event.duration, 500);
+  t.equal(lines[4].event.user.id, 'u1');
+  t.equal(lines[4].event.params.amount, 9.99);
+
+  client.destroy();
+  t.end();
+});
+
+test('batch with shared user and client across events', (t) => {
+  const dir = tmpDir();
+  const client = makeClient(dir);
+
+  const user = { id: 'u-abc', email: 'test@example.com' };
+  const clientEnv = { name: 'my-app', version: '1.0', os: { name: 'Android', version: '15' } };
+
+  client.sendEvent({ type: 'session_start', timestamp: 1000, user, client: clientEnv });
+  client.sendEvent({ type: 'page_view', timestamp: 2000, user, client: clientEnv, params: { page: '/home' } });
+  client.sendEvent({ type: 'session_end', timestamp: 3000, user, client: clientEnv, duration: 2000 });
+  client.flush();
+
+  const files = listFiles(dir);
+  const lines = readLines(path.join(dir, files[0]));
+
+  for (let i = 1; i <= 3; i++) {
+    t.equal(lines[i].event.user.id, 'u-abc', `event ${i} has user`);
+    t.equal(lines[i].event.client.name, 'my-app', `event ${i} has client`);
+  }
+
+  client.destroy();
+  t.end();
+});
+
 test('sendEvent ignored after destroy', (t) => {
   const dir = tmpDir();
   const client = makeClient(dir);
