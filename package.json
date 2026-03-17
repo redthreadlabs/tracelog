@@ -1,6 +1,6 @@
 {
   "name": "@shaxpir/tracelog",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Node.js APM instrumentation that writes traces to JSONL files",
   "publishConfig": {
     "access": "public"

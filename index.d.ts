@@ -56,6 +56,11 @@ declare namespace apm {
     captureEvent (type: string, options?: CaptureEventOptions, callback?: Function): void;
     captureEvents (events: CaptureEventData[], callback?: Function): void;
 
+    // Write pre-built client-originated transaction/span records to JSONL output.
+    // Designed for server endpoints that receive span-shaped perf data from clients.
+    writeClientTransaction (transaction: object): void;
+    writeClientSpan (span: object): void;
+
     // Distributed Tracing
     currentTraceparent: string | null;
     currentTraceIds: {
