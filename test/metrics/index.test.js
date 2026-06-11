@@ -29,6 +29,9 @@ function mockAgent(conf = {}, onMetricSet) {
     _isMetricNameDisabled(name) {
       return false;
     },
+    _channelForTransactionName(name) {
+      return null;
+    },
   };
 }
 

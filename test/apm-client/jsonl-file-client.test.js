@@ -418,13 +418,14 @@ test('uploads orphaned files from previous runs on startup', (t) => {
   const dir = tmpDir();
   const clock = () => new Date('2026-06-15T10:00:00Z');
 
-  // Simulate orphaned files from previous days.
+  // Simulate orphaned files from previous days. Local files are named
+  // {prefix}-{channel}-{period}.jsonl; the default channel is 'default'.
   fs.writeFileSync(
-    path.join(dir, 'tracelog-2026-06-13.jsonl'),
+    path.join(dir, 'tracelog-default-2026-06-13.jsonl'),
     '{"metadata":{}}\n{"transaction":{"name":"old1"}}\n',
   );
   fs.writeFileSync(
-    path.join(dir, 'tracelog-2026-06-14.jsonl'),
+    path.join(dir, 'tracelog-default-2026-06-14.jsonl'),
     '{"metadata":{}}\n{"transaction":{"name":"old2"}}\n',
   );
 
@@ -463,7 +464,7 @@ test('does not upload current period file as orphan', (t) => {
 
   // Create a file for the current period (day 15)
   fs.writeFileSync(
-    path.join(dir, 'tracelog-2026-06-15.jsonl'),
+    path.join(dir, 'tracelog-default-2026-06-15.jsonl'),
     '{"metadata":{}}\n',
   );
 
@@ -631,6 +632,115 @@ test('maxLocalRetentionDays 0 means no cleanup', (t) => {
 
   const files = listFiles(dir);
   t.equal(files.length, 5, 'all 5 files kept when retention is 0');
+
+  client.destroy();
+  t.end();
+});
+
+// --- Metadata: service.node and hostname normalization (1.7.0) ---
+
+test('metadata includes service.node.configured_name when serviceNodeName is set', (t) => {
+  const dir = tmpDir();
+  const client = makeClient(dir, { serviceNodeName: 'ddd-prod-server' });
+
+  client.sendEvent({ type: 'tick', timestamp: 1000 });
+  client.flush();
+
+  const files = listFiles(dir);
+  const lines = readLines(path.join(dir, files[0]));
+  t.deepEqual(
+    lines[0].metadata.service.node,
+    { configured_name: 'ddd-prod-server' },
+    'service.node present',
+  );
+
+  client.destroy();
+  t.end();
+});
+
+test('metadata omits service.node when serviceNodeName is not set', (t) => {
+  const dir = tmpDir();
+  const client = makeClient(dir);
+
+  client.sendEvent({ type: 'tick', timestamp: 1000 });
+  client.flush();
+
+  const files = listFiles(dir);
+  const lines = readLines(path.join(dir, files[0]));
+  t.equal(lines[0].metadata.service.node, undefined, 'no service.node');
+
+  client.destroy();
+  t.end();
+});
+
+test('metadata system.hostname is normalized like the S3 key host', (t) => {
+  const { normalizeHost } = require('../../lib/apm-client/s3-uploader');
+  const dir = tmpDir();
+  const client = makeClient(dir);
+
+  client.sendEvent({ type: 'tick', timestamp: 1000 });
+  client.flush();
+
+  const files = listFiles(dir);
+  const lines = readLines(path.join(dir, files[0]));
+  t.equal(
+    lines[0].metadata.system.hostname,
+    normalizeHost(os.hostname()),
+    'hostname passed through normalizeHost',
+  );
+
+  client.destroy();
+  t.end();
+});
+
+test('destroy writes buffered records even if cloud metadata never resolves', (t) => {
+  const dir = tmpDir();
+  const cloudMetadataFetcher = {
+    getCloudMetadata() {
+      // never calls back
+    },
+  };
+
+  const client = makeClient(dir, { cloudMetadataFetcher });
+
+  client.sendTransaction({ name: 'tx1', type: 'request', duration: 10 });
+  client.flush();
+  t.equal(listFiles(dir).length, 0, 'flush held while cloud pending');
+
+  client.destroy();
+
+  const files = listFiles(dir);
+  t.equal(files.length, 1, 'destroy forced the write');
+  const lines = readLines(path.join(dir, files[0]));
+  t.ok(lines[0].metadata, 'metadata line present');
+  t.equal(lines[0].metadata.cloud, undefined, 'no cloud block');
+  t.ok(lines[1].transaction, 'buffered transaction written');
+  t.end();
+});
+
+test('gives up waiting for cloud metadata after the deadline', (t) => {
+  const dir = tmpDir();
+  let now = new Date('2026-06-15T10:00:00Z');
+  const clock = () => now;
+  const cloudMetadataFetcher = {
+    getCloudMetadata() {
+      // never calls back
+    },
+  };
+
+  const client = makeClient(dir, { clock, cloudMetadataFetcher });
+
+  client.sendTransaction({ name: 'tx1', type: 'request', duration: 10 });
+  client.flush();
+  t.equal(listFiles(dir).length, 0, 'flush held while within the deadline');
+
+  now = new Date('2026-06-15T10:00:11Z'); // > 10s wait deadline
+  client.flush();
+
+  const files = listFiles(dir);
+  t.equal(files.length, 1, 'flush proceeded after the deadline');
+  const lines = readLines(path.join(dir, files[0]));
+  t.equal(lines[0].metadata.cloud, undefined, 'no cloud block');
 
   client.destroy();
   t.end();

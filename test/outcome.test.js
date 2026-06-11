@@ -375,3 +375,56 @@ suite('agent level setSpanOutcome tests', function (test) {
   });
   test.end();
 });
+
+suite('transaction outcome derived from string result', function (test) {
+  test.test('result "success" derives outcome success', function (t) {
+    const transaction = agent.startTransaction('t-result-success', 'custom');
+    transaction.end('success');
+    t.equals(transaction.outcome, constants.OUTCOME_SUCCESS);
+    t.end();
+  });
+
+  test.test('result "failure" derives outcome failure', function (t) {
+    const transaction = agent.startTransaction('t-result-failure', 'custom');
+    transaction.end('failure');
+    t.equals(transaction.outcome, constants.OUTCOME_FAILURE);
+    t.end();
+  });
+
+  test.test('result "error" derives outcome failure', function (t) {
+    const transaction = agent.startTransaction('t-result-error', 'custom');
+    transaction.end('error');
+    t.equals(transaction.outcome, constants.OUTCOME_FAILURE);
+    t.end();
+  });
+
+  test.test('other result strings leave outcome unknown', function (t) {
+    const transaction = agent.startTransaction('t-result-other', 'custom');
+    transaction.end('HTTP 2xx'); // status-code results are handled elsewhere
+    t.equals(transaction.outcome, constants.OUTCOME_UNKNOWN);
+    t.end();
+  });
+
+  test.test('no result leaves outcome unknown', function (t) {
+    // The result *default* is 'success', but only an explicitly passed
+    // result derives the outcome: ending without one means "unknown".
+    const transaction = agent.startTransaction('t-no-result', 'custom');
+    transaction.end();
+    t.equals(transaction.result, 'success', 'default result unchanged');
+    t.equals(transaction.outcome, constants.OUTCOME_UNKNOWN);
+    t.end();
+  });
+
+  test.test('an explicit setOutcome wins over the result string', function (t) {
+    const transaction = agent.startTransaction('t-explicit', 'custom');
+    transaction.setOutcome(constants.OUTCOME_FAILURE);
+    transaction.end('success');
+    t.equals(
+      transaction.outcome,
+      constants.OUTCOME_FAILURE,
+      'explicit outcome is not overridden by result derivation',
+    );
+    t.end();
+  });
+  test.end();
+});

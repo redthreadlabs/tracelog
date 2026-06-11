@@ -2,7 +2,12 @@
 
 Each line in a tracelog `.jsonl` file is a self-contained JSON object with exactly one top-level key identifying the event type. There are six event types: `metadata`, `transaction`, `span`, `error`, `metricset`, and `event`.
 
-All timestamps are in **microseconds** since Unix epoch.
+All `timestamp` fields — on every record kind, with no exceptions — are in
+**microseconds** since Unix epoch. All `duration` fields are in
+**milliseconds**.
+
+Context/sub-objects with no content are omitted entirely; no record kind
+serializes empty `{}` placeholder objects.
 
 All string fields are subject to truncation (see [Truncation](#truncation) at the bottom).
 
@@ -22,6 +27,8 @@ Written once at the start of each new file. Describes the service, process, syst
 | `service.name` | string | yes | Service name |
 | `service.version` | string | no | Service version |
 | `service.environment` | string | no | Deployment environment (e.g. `production`) |
+| `service.node` | object | no | Service node info (when `serviceNodeName` is configured) |
+| `service.node.configured_name` | string | no | The configured node name |
 | `service.agent` | object | yes | Agent info |
 | `service.agent.name` | string | yes | Always `"tracelog"` |
 | `service.agent.version` | string | yes | Tracelog package version |
@@ -30,7 +37,7 @@ Written once at the start of each new file. Describes the service, process, syst
 | `process.title` | string | yes | Process title (`process.title`) |
 | `process.argv` | string[] | yes | Process arguments |
 | `system` | object | yes | Host system info |
-| `system.hostname` | string | yes | Hostname |
+| `system.hostname` | string | yes | Hostname, normalized the same way as the host in S3 keys (EC2-internal names become the dotted IP) |
 | `system.architecture` | string | yes | CPU architecture (e.g. `x64`, `arm64`) |
 | `system.platform` | string | yes | OS platform (e.g. `linux`, `darwin`) |
 | `labels` | object | no | Global labels from `globalLabels` config. Arbitrary key-value pairs. |
@@ -69,7 +76,7 @@ Represents a top-level unit of work (e.g. an incoming HTTP request, a background
 | `timestamp` | integer | yes | Start time in microseconds since epoch |
 | `result` | string | yes | Result string (e.g. `HTTP 2xx`, `success`) |
 | `sampled` | boolean | yes | Whether full details were captured |
-| `outcome` | string | yes | `success`, `failure`, or `unknown` |
+| `outcome` | string | yes | `success`, `failure`, or `unknown`. HTTP transactions derive it from the status code; manually ended transactions derive it from a result of `success`/`failure`/`error` explicitly passed to `end()`, unless `setOutcome()` was called. |
 | `sample_rate` | number | no | Sampling rate [0.0 .. 1.0]. Omitted if not available from tracestate. |
 
 ### Span count
@@ -80,6 +87,9 @@ Represents a top-level unit of work (e.g. an incoming HTTP request, a background
 | `span_count.dropped` | integer | no | Number of spans dropped (only present if > 0) |
 
 ### Context (only present when `sampled` is `true`)
+
+Context members with no content are omitted; `context` itself is omitted
+when every member is empty.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -365,10 +375,25 @@ A custom event for recording arbitrary application-level occurrences: user analy
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `type` | string | yes | Event category (e.g. `page_view`, `button_click`, `purchase`, `log`) |
-| `timestamp` | integer | yes | Time of the event in milliseconds since epoch |
+| `timestamp` | integer | yes | Time of the event in microseconds since epoch (the `writeEvent` API accepts milliseconds, e.g. `Date.now()`) |
 | `duration` | number | no | Duration in milliseconds (e.g. page load time, action duration) |
 | `message` | string | no | Human-readable description; doubles as a log line |
-| `level` | string | no | Severity level: `debug`, `info`, `warn`, `error`, `fatal` |
+| `level` | string | yes | Severity level: `debug`, `info`, `warn`, `error`, `fatal`. Defaults to `info`. |
+| `trace_id` | string | no | Trace ID of the transaction that was active when the event was written (single-event writes only; batch writes never stamp trace context) |
+| `transaction_id` | string | no | ID of the active transaction (see `trace_id`) |
+
+### Error (optional)
+
+Attached error details, safely extracted from an `Error` instance, a string,
+or an error-like plain object (e.g. an error that crossed a process boundary
+as `{message, code}`).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `error.message` | string | yes | Error message. For message-less objects, a bounded JSON representation. |
+| `error.type` | string | no | Error class name (`err.name`) or `type` field |
+| `error.code` | string | no | Error code (`err.code`), stringified |
+| `error.stack` | string | no | Stack trace when present |
 
 ### User (optional)
 

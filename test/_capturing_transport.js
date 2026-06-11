@@ -40,6 +40,7 @@ class CapturingTransport {
     this.transactions = [];
     this.errors = [];
     this.metricsets = [];
+    this.events = [];
     // Records sent via sendToChannel, keyed by channel name. Each value is
     // an object of arrays keyed by record type (pluralized), e.g.
     // `this.channels['unknown-route'].transactions`.
@@ -81,6 +82,13 @@ class CapturingTransport {
 
   sendMetricSet(metricset, cb) {
     this.metricsets.push(metricset);
+    if (cb) {
+      process.nextTick(cb);
+    }
+  }
+
+  sendEvent(event, cb) {
+    this.events.push(event);
     if (cb) {
       process.nextTick(cb);
     }

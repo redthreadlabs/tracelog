@@ -14,7 +14,16 @@ const { execFile } = require('child_process');
 const moduleDetailsFromPath = require('module-details-from-path');
 const semver = require('semver');
 
-const { MockAPMServer } = require('./_mock_apm_server');
+// `_mock_apm_server.js` was removed in the tracelog fork (no HTTP intake).
+// `runTestFixtures` is the only user; require lazily so the many unit tests
+// that import this module for its helpers still load.
+let MockAPMServer = null;
+function requireMockAPMServer() {
+  if (!MockAPMServer) {
+    MockAPMServer = require('./_mock_apm_server').MockAPMServer;
+  }
+  return MockAPMServer;
+}
 
 // Lookup the property "str" (given in dot-notation) in the object "obj".
 // If the property isn't found, then `undefined` is returned.
@@ -299,7 +308,7 @@ function runTestFixtures(suite, testFixtures) {
         }
       }
 
-      const apmServer = new MockAPMServer();
+      const apmServer = new (requireMockAPMServer())();
       apmServer.start(function (serverUrl) {
         const argv = (tf.nodeArgv || [])
           .concat([tf.script])

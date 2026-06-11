@@ -462,14 +462,11 @@ test('#_encode() - ended', function (t) {
   t.ok(payload.duration > 0);
   t.strictEqual(payload.timestamp, timerStart);
   t.strictEqual(payload.result, 'success');
-  t.deepEqual(payload.context, {
-    user: {},
-    tags: {},
-    custom: {},
-    service: {},
-    cloud: {},
-    message: {},
-  });
+  t.strictEqual(
+    payload.context,
+    undefined,
+    'empty context members are omitted, and so is an empty context',
+  );
 
   t.end();
 });
@@ -516,9 +513,6 @@ test('#_encode() - with meta data', function (t) {
     user: { foo: 1 },
     tags: { bar: '1' },
     custom: { baz: 1 },
-    service: {},
-    cloud: {},
-    message: {},
   });
 
   t.end();
@@ -560,12 +554,6 @@ test('#_encode() - http request meta data', function (t) {
   t.strictEqual(payload.timestamp, timerStart);
   t.strictEqual(payload.result, 'success');
   t.deepEqual(payload.context, {
-    user: {},
-    tags: {},
-    custom: {},
-    service: {},
-    cloud: {},
-    message: {},
     request: {
       http_version: '1.1',
       method: 'POST',
@@ -612,14 +600,7 @@ test('#_encode() - with spans', function (t) {
     t.strictEqual(payload.timestamp, timerStart);
     t.ok(payload.duration > 0, 'should have a duration >0ms');
     t.ok(payload.duration < 100, 'should have a duration <100ms');
-    t.deepEqual(payload.context, {
-      user: {},
-      tags: {},
-      custom: {},
-      service: {},
-      cloud: {},
-      message: {},
-    });
+    t.strictEqual(payload.context, undefined, 'empty context omitted');
     t.deepEqual(payload.span_count, {
       started: 1,
     });
@@ -653,14 +634,7 @@ test('#_encode() - dropped spans', function (t) {
     t.strictEqual(payload.timestamp, timerStart);
     t.ok(payload.duration > 0, 'should have a duration >0ms');
     t.ok(payload.duration < 100, 'should have a duration <100ms');
-    t.deepEqual(payload.context, {
-      user: {},
-      tags: {},
-      custom: {},
-      service: {},
-      cloud: {},
-      message: {},
-    });
+    t.strictEqual(payload.context, undefined, 'empty context omitted');
 
     t.deepEqual(payload.span_count, {
       started: 2,
