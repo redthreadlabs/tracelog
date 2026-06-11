@@ -1,5 +1,5 @@
 /*
- * Copyright Shaxpir Inc. All rights reserved.
+ * Copyright Red Thread Labs LLC. All rights reserved.
  * Licensed under the BSD 2-Clause License; you may not use this file except in
  * compliance with the BSD 2-Clause License.
  */

@@ -39,7 +39,7 @@ lib/stacktraces.js          # Stack trace capture and parsing
 - **Node.js >= 14.17.0** required.
 - **No TypeScript source** — all source is plain JavaScript. Types in `index.d.ts` and `types/`.
 - **Strict mode** — every source file uses `'use strict';`.
-- **Copyright headers** — BSD-2-Clause header at top. New files include both Elasticsearch and Shaxpir Inc. lines.
+- **Copyright headers** — BSD-2-Clause header at top. New files include both Elasticsearch and Red Thread Labs LLC lines.
 - **Test framework** — `tape`.
 
 ## Data flow
