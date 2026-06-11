@@ -116,9 +116,14 @@ apm.start({
 });
 ```
 
-Spans are routed using their transaction's name at the time the span is
-sent; a span that ends before the framework resolves the route falls back
-to the default channel.
+Spans follow their transaction's channel only when the transaction already
+has a *resolved* name (set via `startTransaction(name)`,
+`transaction.name = ...`, or a framework default) by the time the span
+ends. HTTP-framework transactions (e.g. Express) are typically named when
+the request finishes — after their spans have ended — so their spans stay
+on the default channel. Transaction payloads and breakdown metricsets are
+unaffected: both are produced after the name is final and always follow
+the rules.
 
 ## Sampling & limits
 
