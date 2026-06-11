@@ -116,13 +116,13 @@ apm.start({
 });
 ```
 
-Spans follow their transaction's channel only when the transaction already
-has a *resolved* name (set via `startTransaction(name)`,
-`transaction.name = ...`, or a framework default) by the time the span
-ends. HTTP-framework transactions (e.g. Express) are typically named when
-the request finishes — after their spans have ended — so their spans stay
-on the default channel. Transaction payloads and breakdown metricsets are
-unaffected: both are produced after the name is final and always follow
+Spans follow their transaction's channel. If a span ends while its
+transaction's name is still unresolved (HTTP frameworks like Express only
+name transactions when the request finishes), the span is held in memory
+on the transaction and written when the transaction ends, using the same
+routing decision as the transaction itself. Held spans are bounded by
+`transactionMaxSpans`; spans of a transaction that never ends are not
+written. Breakdown metricsets are produced after naming and always follow
 the rules.
 
 ## Sampling & limits

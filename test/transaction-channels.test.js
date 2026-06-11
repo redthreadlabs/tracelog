@@ -124,36 +124,68 @@ test('spans follow their transaction to the named channel', (t) => {
   });
 });
 
-test('spans of transactions named only at end stay on the default channel', (t) => {
+test('spans of transactions named only at end are held and routed with the transaction', (t) => {
   // HTTP-framework transactions (e.g. Express) get their route name at
   // transaction.end(); until then the name getter falls back to
   // '<METHOD> unknown route (unnamed)'. Span routing must not use that
-  // fallback, else every in-flight request's spans would match
-  // unmatched-route rules and be diverted.
+  // fallback (else every in-flight request's spans would match
+  // unmatched-route rules and be diverted). Instead, spans that end while
+  // the name is unresolved are held on the transaction and drained with
+  // the transaction's final routing decision.
   const agent = new Agent().start(testAgentOpts);
 
   const t1 = agent.startTransaction(null, 'request');
   const s1 = agent.startSpan('redis-session-lookup', 'db', 'redis');
   s1.end(); // ends while the transaction is still unnamed
-  t1.setDefaultName('GET unknown route');
-  t1.end();
+  setTimeout(() => {
+    // Let the span's async encode complete while the name is unresolved,
+    // then name the transaction at end, as HTTP frameworks do.
+    t1.setDefaultName('GET unknown route');
+    t1.end();
 
-  agent.flush(() => {
-    const transport = agent._apmClient;
-    t.equal(transport.spans.length, 1, 'span stayed on the default channel');
-    t.equal(transport.spans[0].name, 'redis-session-lookup');
-    const routed = transport.channels['unknown-route'];
-    t.ok(routed, 'unknown-route channel exists');
-    t.equal(
-      routed.transactions.length,
-      1,
-      'end-named transaction was still routed',
-    );
-    t.equal(routed.transactions[0].name, 'GET unknown route');
-    t.equal(routed.spans.length, 0, 'no spans were routed');
-    agent.destroy();
-    t.end();
-  });
+    agent.flush(() => {
+      const transport = agent._apmClient;
+      t.equal(transport.spans.length, 0, 'no spans on the default channel');
+      const routed = transport.channels['unknown-route'];
+      t.ok(routed, 'unknown-route channel exists');
+      t.equal(routed.transactions.length, 1, 'transaction was routed');
+      t.equal(routed.transactions[0].name, 'GET unknown route');
+      t.equal(
+        routed.spans.length,
+        1,
+        'held span was routed with its transaction',
+      );
+      t.equal(routed.spans[0].name, 'redis-session-lookup');
+      agent.destroy();
+      t.end();
+    });
+  }, 100);
+});
+
+test('held spans of an unrouted transaction drain to the default channel', (t) => {
+  const agent = new Agent().start(testAgentOpts);
+
+  const t1 = agent.startTransaction(null, 'request');
+  const s1 = agent.startSpan('redis-session-lookup', 'db', 'redis');
+  s1.end(); // ends while the transaction is still unnamed
+  setTimeout(() => {
+    t1.setDefaultName('GET /real/route');
+    t1.end();
+
+    agent.flush(() => {
+      const transport = agent._apmClient;
+      t.equal(transport.transactions.length, 1, 'transaction on default');
+      t.equal(transport.transactions[0].name, 'GET /real/route');
+      t.equal(transport.spans.length, 1, 'held span drained to default');
+      t.equal(transport.spans[0].name, 'redis-session-lookup');
+      t.notOk(
+        transport.channels['unknown-route'],
+        'nothing reached the unknown-route channel',
+      );
+      agent.destroy();
+      t.end();
+    });
+  }, 100);
 });
 
 test('breakdown metricsets follow their transaction to the named channel', (t) => {
