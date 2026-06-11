@@ -293,6 +293,15 @@ declare namespace apm {
     spanStackTraceMinDuration?: string;
     stackTraceLimit?: number;
     traceContinuationStrategy?: TraceContinuationStrategy;
+    /**
+     * Route auto-instrumented transactions (and their spans and breakdown
+     * metricsets) to a named channel when the transaction name matches a
+     * wildcard pattern. First matching rule wins; unmatched records go to
+     * the default channel.
+     *
+     * Example: `[{ pattern: '* unknown route*', channel: 'unknown-route' }]`
+     */
+    transactionChannels?: Array<TransactionChannelRule>;
     transactionIgnoreUrls?: Array<string>;
     transactionMaxSpans?: number;
     transactionSampleRate?: number;
@@ -327,6 +336,13 @@ declare namespace apm {
     writeError (err: Error | string | ParameterizedMessageObject, options?: CaptureErrorOptions, callback?: CaptureErrorCallback): void;
     writeTransaction (transaction: object): void;
     writeSpan (span: object): void;
+  }
+
+  interface TransactionChannelRule {
+    /** Wildcard pattern matched against the transaction name. */
+    pattern: string;
+    /** Channel to route matching transactions, spans, and breakdown metricsets to. */
+    channel: string;
   }
 
   interface CaptureEventOptions {

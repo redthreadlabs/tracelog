@@ -94,9 +94,31 @@ Completed files automatically get `.gz` appended to the key.
 | `addPatch` | `TRACELOG_ADD_PATCH` | — | Add custom instrumentation patches (`module=path` pairs) |
 | `ignoreUrls` | — | — | Array of URL path patterns to ignore |
 | `transactionIgnoreUrls` | `TRACELOG_TRANSACTION_IGNORE_URLS` | `[]` | Comma-separated URL patterns to ignore |
+| `transactionChannels` | — | `[]` | Route transactions to named channels by transaction-name pattern (see below) |
 | `ignoreUserAgents` | — | — | Array of user-agent patterns to ignore |
 | `ignoreMessageQueues` | `TRACELOG_IGNORE_MESSAGE_QUEUES` | `[]` | Message queue names to ignore |
 | `usePathAsTransactionName` | `TRACELOG_USE_PATH_AS_TRANSACTION_NAME` | `false` | Use raw URL path as transaction name (instead of route pattern) |
+
+### Transaction channel routing
+
+`transactionChannels` takes an array of `{ pattern, channel }` rules. The
+`pattern` is a wildcard expression (same syntax as `transactionIgnoreUrls`)
+matched against the transaction *name*; the first matching rule wins. A
+matching transaction — along with its spans and its breakdown metricsets —
+is written to the named channel's JSONL file instead of the default channel.
+
+```js
+apm.start({
+  // Keep internet-scanner noise out of the default channel, but retain it.
+  transactionChannels: [
+    { pattern: '* unknown route*', channel: 'unknown-route' },
+  ],
+});
+```
+
+Spans are routed using their transaction's name at the time the span is
+sent; a span that ends before the framework resolves the route falls back
+to the default channel.
 
 ## Sampling & limits
 
