@@ -19,11 +19,15 @@ require('tracelog').start({
   serviceName: 'my-api',
   serviceVersion: '1.0.0',
   logDir: '/var/log/myapp',
+  defaultChannel: 'server',
   s3Bucket: 'my-traces',
   s3Region: 'us-east-1',
-  s3KeyTemplate: '{serviceName}/{environment}/{date}/{hostname}-{pid}-{timestamp}.jsonl',
 });
 ```
+
+S3 keys follow a fixed layout designed for prefix scans and per-channel
+lifecycle rules: `{channel}/{interval}/{host}[_{seq}][_current].jsonl[.gz]`
+(see CONFIG.md).
 
 Or use the auto-start entry point with environment variables:
 

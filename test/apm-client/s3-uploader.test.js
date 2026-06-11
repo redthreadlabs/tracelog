@@ -12,7 +12,7 @@ const path = require('path');
 const os = require('os');
 const zlib = require('zlib');
 
-const { S3Uploader } = require('../../lib/apm-client/s3-uploader');
+const { S3Uploader, normalizeHost } = require('../../lib/apm-client/s3-uploader');
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'tracelog-s3-test-'));
@@ -21,8 +21,13 @@ function tmpDir() {
 function makeMockS3() {
   return {
     uploads: [],
+    deletes: [],
     send(command) {
       const input = command.input;
+      if (command.constructor.name === 'DeleteObjectCommand') {
+        this.deletes.push({ Bucket: input.Bucket, Key: input.Key });
+        return Promise.resolve();
+      }
       let body = input.Body;
       // If body is a stream, read it; if buffer/string, keep as-is
       if (Buffer.isBuffer(body) || typeof body === 'string') {
@@ -58,62 +63,148 @@ function makeMockS3() {
 function makeUploader(mockS3, opts = {}) {
   return new S3Uploader({
     bucket: opts.bucket || 'test-bucket',
-    keyTemplate:
-      opts.keyTemplate ||
-      '{serviceName}/{environment}/{date}/{filename}',
-    serviceName: opts.serviceName || 'my-svc',
-    environment: opts.environment || 'test',
+    host: opts.host || '172.31.27.225',
     s3Client: mockS3,
-    clock: opts.clock || (() => new Date('2026-06-15T14:30:00Z')),
     gzipCompleted: opts.gzipCompleted,
     gzipCurrent: opts.gzipCurrent,
     logger: opts.logger,
   });
 }
 
-// --- Key template resolution ---
+const VARS = { channel: 'server', interval: '2026-06-15', seq: 0 };
 
-test('s3 key template resolves variables', (t) => {
+// --- Host normalization ---
+
+test('normalizeHost converts EC2 internal hostnames to dotted IPs', (t) => {
+  t.equal(normalizeHost('ip-172-31-27-225.ec2.internal'), '172.31.27.225');
+  t.equal(normalizeHost('ip-10-0-0-1'), '10.0.0.1');
+  t.equal(
+    normalizeHost('ip-10-1-2-3.us-west-2.compute.internal'),
+    '10.1.2.3',
+  );
+  t.equal(normalizeHost('benjis-macbook.local'), 'benjis-macbook.local');
+  t.equal(normalizeHost('ip-not-a-number-here'), 'ip-not-a-number-here');
+  t.end();
+});
+
+// --- Key layout ---
+
+test('uploadCompleted uses the fixed channel/interval/host layout', (t) => {
   const mockS3 = makeMockS3();
-  const uploader = makeUploader(mockS3, {
-    keyTemplate: '{serviceName}/{environment}/{date}/{hostname}-{pid}-{timestamp}.jsonl',
-    clock: () => new Date('2026-06-15T14:30:00Z'),
-    gzipCurrent: false,
-  });
+  const uploader = makeUploader(mockS3);
 
   const dir = tmpDir();
-  const filePath = path.join(dir, 'tracelog-2026-06-15.jsonl');
+  const filePath = path.join(dir, 'completed.jsonl');
   fs.writeFileSync(filePath, '{"metadata":{}}\n', 'utf8');
 
-  uploader.uploadCurrent(filePath, () => {
+  uploader.uploadCompleted(filePath, VARS);
+
+  setTimeout(() => {
     t.equal(mockS3.uploads.length, 1, 'one upload');
-    const key = mockS3.uploads[0].Key;
-    t.ok(key.startsWith('my-svc/test/2026-06-15/'), 'key has service/env/date prefix');
-    t.ok(key.includes(os.hostname()), 'key contains hostname');
-    t.ok(key.includes(String(process.pid)), 'key contains pid');
-    t.ok(key.endsWith('.jsonl'), 'key ends with .jsonl');
+    t.equal(
+      mockS3.uploads[0].Key,
+      'server/2026-06-15/172.31.27.225.jsonl.gz',
+      'completed key matches contract',
+    );
+    t.end();
+  }, 500);
+});
+
+test('uploadCompleted includes seq in the basename when > 0', (t) => {
+  const mockS3 = makeMockS3();
+  const uploader = makeUploader(mockS3);
+
+  const dir = tmpDir();
+  const filePath = path.join(dir, 'completed.1.jsonl');
+  fs.writeFileSync(filePath, '{"metadata":{}}\n', 'utf8');
+
+  uploader.uploadCompleted(filePath, { ...VARS, seq: 1 });
+
+  setTimeout(() => {
+    t.equal(
+      mockS3.uploads[0].Key,
+      'server/2026-06-15/172.31.27.225_1.jsonl.gz',
+      'seq key matches contract',
+    );
+    t.equal(
+      mockS3.deletes[0].Key,
+      'server/2026-06-15/172.31.27.225_1_current.jsonl.gz',
+      'stale current for the seq file deleted',
+    );
+    t.end();
+  }, 500);
+});
+
+test('uploadCurrent keeps the real interval with a _current suffix', (t) => {
+  const mockS3 = makeMockS3();
+  const uploader = makeUploader(mockS3);
+
+  const dir = tmpDir();
+  const filePath = path.join(dir, 'current.jsonl');
+  fs.writeFileSync(filePath, '{"metadata":{}}\n', 'utf8');
+
+  uploader.uploadCurrent(filePath, VARS, () => {
+    t.equal(mockS3.uploads.length, 1, 'one upload');
+    t.equal(
+      mockS3.uploads[0].Key,
+      'server/2026-06-15/172.31.27.225_current.jsonl.gz',
+      'current key matches contract',
+    );
+    t.ok(fs.existsSync(filePath), 'file not deleted');
     t.end();
   });
 });
 
-test('s3 key template supports {filename}', (t) => {
+test('uploadCompleted deletes the superseded _current object on success', (t) => {
   const mockS3 = makeMockS3();
-  const uploader = makeUploader(mockS3, {
-    keyTemplate: 'logs/{filename}',
-    gzipCurrent: false,
+  const uploader = makeUploader(mockS3);
+
+  const dir = tmpDir();
+  const filePath = path.join(dir, 'completed.jsonl');
+  fs.writeFileSync(filePath, '{"metadata":{}}\n', 'utf8');
+
+  uploader.uploadCompleted(filePath, VARS);
+
+  setTimeout(() => {
+    t.equal(mockS3.deletes.length, 1, 'one delete issued');
+    t.equal(
+      mockS3.deletes[0].Key,
+      'server/2026-06-15/172.31.27.225_current.jsonl.gz',
+      'deleted the matching current snapshot',
+    );
+    t.end();
+  }, 500);
+});
+
+test('uploadCompleted does not delete current snapshot on upload failure', (t) => {
+  const deletes = [];
+  const failingS3 = {
+    send(command) {
+      if (command.constructor.name === 'DeleteObjectCommand') {
+        deletes.push(command.input.Key);
+        return Promise.resolve();
+      }
+      return Promise.reject(new Error('S3 is down'));
+    },
+  };
+  const uploader = makeUploader(failingS3, {
+    logger: { debug() {}, error() {} },
   });
 
   const dir = tmpDir();
-  const filePath = path.join(dir, 'tracelog-2026-06-15.jsonl');
+  const filePath = path.join(dir, 'fail.jsonl');
   fs.writeFileSync(filePath, '{"metadata":{}}\n', 'utf8');
 
-  uploader.uploadCurrent(filePath, () => {
-    t.equal(mockS3.uploads[0].Key, 'logs/tracelog-2026-06-15.jsonl');
+  uploader.uploadCompleted(filePath, VARS);
+
+  setTimeout(() => {
+    t.equal(deletes.length, 0, 'no delete after failed upload');
+    t.ok(fs.existsSync(filePath), 'original file preserved on failure');
     t.end();
-  });
+  }, 500);
 });
 
-// --- uploadCurrent (gzip disabled) ---
+// --- Content handling ---
 
 test('uploadCurrent sends raw content when gzipCurrent is false', (t) => {
   const mockS3 = makeMockS3();
@@ -124,19 +215,20 @@ test('uploadCurrent sends raw content when gzipCurrent is false', (t) => {
   const content = '{"metadata":{}}\n{"transaction":{"name":"tx1"}}\n';
   fs.writeFileSync(filePath, content, 'utf8');
 
-  uploader.uploadCurrent(filePath, () => {
+  uploader.uploadCurrent(filePath, VARS, () => {
     t.equal(mockS3.uploads.length, 1, 'one upload');
     t.equal(mockS3.uploads[0].ContentType, 'application/x-ndjson');
     t.equal(mockS3.uploads[0].ContentEncoding, undefined, 'no gzip encoding');
     t.equal(mockS3.uploads[0].Bucket, 'test-bucket');
     t.equal(mockS3.uploads[0].Body.toString(), content, 'body matches file content');
-    t.ok(!mockS3.uploads[0].Key.endsWith('.gz'), 'key has no .gz suffix');
-    t.ok(fs.existsSync(filePath), 'file not deleted');
+    t.equal(
+      mockS3.uploads[0].Key,
+      'server/2026-06-15/172.31.27.225_current.jsonl',
+      'no .gz suffix',
+    );
     t.end();
   });
 });
-
-// --- uploadCurrent (gzip enabled, default) ---
 
 test('uploadCurrent gzips content by default', (t) => {
   const mockS3 = makeMockS3();
@@ -147,7 +239,7 @@ test('uploadCurrent gzips content by default', (t) => {
   const content = '{"metadata":{}}\n{"transaction":{"name":"tx1"}}\n';
   fs.writeFileSync(filePath, content, 'utf8');
 
-  uploader.uploadCurrent(filePath, () => {
+  uploader.uploadCurrent(filePath, VARS, () => {
     t.equal(mockS3.uploads.length, 1, 'one upload');
     t.equal(mockS3.uploads[0].ContentEncoding, 'gzip', 'gzip encoding set');
     t.ok(mockS3.uploads[0].Key.endsWith('.gz'), 'key has .gz suffix');
@@ -163,13 +255,11 @@ test('uploadCurrent does nothing for non-existent file', (t) => {
   const mockS3 = makeMockS3();
   const uploader = makeUploader(mockS3);
 
-  uploader.uploadCurrent('/tmp/does-not-exist.jsonl', () => {
+  uploader.uploadCurrent('/tmp/does-not-exist.jsonl', VARS, () => {
     t.equal(mockS3.uploads.length, 0, 'no upload for missing file');
     t.end();
   });
 });
-
-// --- uploadCompleted (gzip enabled, default) ---
 
 test('uploadCompleted gzips, uploads, and deletes local file', (t) => {
   const mockS3 = makeMockS3();
@@ -180,7 +270,7 @@ test('uploadCompleted gzips, uploads, and deletes local file', (t) => {
   const content = '{"metadata":{}}\n{"transaction":{"name":"done"}}\n';
   fs.writeFileSync(filePath, content, 'utf8');
 
-  uploader.uploadCompleted(filePath);
+  uploader.uploadCompleted(filePath, VARS);
 
   setTimeout(() => {
     t.equal(mockS3.uploads.length, 1, 'one upload');
@@ -197,8 +287,6 @@ test('uploadCompleted gzips, uploads, and deletes local file', (t) => {
   }, 500);
 });
 
-// --- uploadCompleted (gzip disabled) ---
-
 test('uploadCompleted sends raw content when gzipCompleted is false', (t) => {
   const mockS3 = makeMockS3();
   const uploader = makeUploader(mockS3, { gzipCompleted: false });
@@ -208,19 +296,18 @@ test('uploadCompleted sends raw content when gzipCompleted is false', (t) => {
   const content = '{"metadata":{}}\n{"transaction":{"name":"raw"}}\n';
   fs.writeFileSync(filePath, content, 'utf8');
 
-  uploader.uploadCompleted(filePath);
+  uploader.uploadCompleted(filePath, VARS);
 
   setTimeout(() => {
     t.equal(mockS3.uploads.length, 1, 'one upload');
-    t.ok(!mockS3.uploads[0].Key.endsWith('.gz'), 'key has no .gz suffix');
+    t.equal(
+      mockS3.uploads[0].Key,
+      'server/2026-06-15/172.31.27.225.jsonl',
+      'no .gz suffix',
+    );
     t.equal(mockS3.uploads[0].ContentEncoding, undefined, 'no gzip encoding');
-
-    // Body is a stream that was read — should match content
     t.equal(mockS3.uploads[0].Body.toString(), content, 'body matches original');
-
-    // Original file should be deleted on success
     t.ok(!fs.existsSync(filePath), 'original file deleted');
-
     t.end();
   }, 500);
 });
@@ -229,7 +316,7 @@ test('uploadCompleted does nothing for non-existent file', (t) => {
   const mockS3 = makeMockS3();
   const uploader = makeUploader(mockS3);
 
-  uploader.uploadCompleted('/tmp/does-not-exist.jsonl');
+  uploader.uploadCompleted('/tmp/does-not-exist.jsonl', VARS);
 
   setTimeout(() => {
     t.equal(mockS3.uploads.length, 0, 'no upload for missing file');
@@ -259,13 +346,11 @@ test('uploadCompleted handles S3 upload failure gracefully', (t) => {
   const filePath = path.join(dir, 'fail.jsonl');
   fs.writeFileSync(filePath, '{"metadata":{}}\n', 'utf8');
 
-  uploader.uploadCompleted(filePath);
+  uploader.uploadCompleted(filePath, VARS);
 
   setTimeout(() => {
     t.ok(errors.length > 0, 'error was logged');
-    // Original file should be kept (not deleted on failure)
     t.ok(fs.existsSync(filePath), 'original file preserved on failure');
-    // .gz file should be cleaned up
     t.ok(!fs.existsSync(filePath + '.gz'), 'gz file cleaned up on failure');
     t.end();
   }, 500);
@@ -291,36 +376,33 @@ test('uploadCurrent handles S3 upload failure gracefully', (t) => {
   const filePath = path.join(dir, 'fail-current.jsonl');
   fs.writeFileSync(filePath, '{"metadata":{}}\n', 'utf8');
 
-  uploader.uploadCurrent(filePath, () => {
+  uploader.uploadCurrent(filePath, VARS, () => {
     t.ok(errors.length > 0, 'error was logged');
     t.ok(fs.existsSync(filePath), 'file preserved on failure');
     t.end();
   });
 });
 
-// --- Clock ---
+// --- Default host ---
 
-test('clock affects key template date variables', (t) => {
+test('host defaults to the normalized os.hostname()', (t) => {
   const mockS3 = makeMockS3();
-  const fixedDate = new Date('2030-12-25T08:45:00Z');
-  const uploader = makeUploader(mockS3, {
-    keyTemplate: '{year}/{month}/{day}/{hour}-{minute}.jsonl',
-    clock: () => fixedDate,
+  const uploader = new S3Uploader({
+    bucket: 'test-bucket',
+    s3Client: mockS3,
     gzipCurrent: false,
   });
 
   const dir = tmpDir();
-  const filePath = path.join(dir, 'test.jsonl');
+  const filePath = path.join(dir, 'host.jsonl');
   fs.writeFileSync(filePath, '{"metadata":{}}\n', 'utf8');
 
-  // getHours()/getMinutes() return local time, so build the expected key
-  // from the same Date object to avoid timezone mismatches.
-  const expectedHour = String(fixedDate.getHours()).padStart(2, '0');
-  const expectedMinute = String(fixedDate.getMinutes()).padStart(2, '0');
-  const expectedKey = `2030/12/${fixedDate.getDate()}/${expectedHour}-${expectedMinute}.jsonl`;
-
-  uploader.uploadCurrent(filePath, () => {
-    t.equal(mockS3.uploads[0].Key, expectedKey);
+  uploader.uploadCurrent(filePath, VARS, () => {
+    t.equal(
+      mockS3.uploads[0].Key,
+      `server/2026-06-15/${normalizeHost(os.hostname())}_current.jsonl`,
+      'key uses normalized hostname',
+    );
     t.end();
   });
 });

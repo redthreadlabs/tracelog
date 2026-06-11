@@ -62,6 +62,28 @@ test('writes metadata as first line', (t) => {
   t.end();
 });
 
+test('defaultChannel option names the default channel', (t) => {
+  const dir = tmpDir();
+  const client = makeClient(dir, { defaultChannel: 'server' });
+
+  client.sendTransaction({ name: 'tx1', type: 'request', duration: 10 });
+  client.flush();
+
+  const files = listFiles(dir);
+  t.equal(files.length, 1, 'one file created');
+  t.ok(
+    files[0].startsWith('tracelog-server-'),
+    `filename uses the channel name (got ${files[0]})`,
+  );
+
+  const lines = readLines(path.join(dir, files[0]));
+  t.equal(lines[0].metadata.channel, 'server', 'metadata channel renamed');
+  t.ok(lines[1].transaction, 'transaction routed to renamed default channel');
+
+  client.destroy();
+  t.end();
+});
+
 test('writes transactions, spans, errors, metricsets', (t) => {
   const dir = tmpDir();
   const client = makeClient(dir);

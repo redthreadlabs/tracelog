@@ -39,11 +39,38 @@ Every file starts with a `metadata` line as its first record.
 
 Set `s3Bucket` to enable automatic upload of log files to S3. Completed (rotated) files are gzipped before upload and deleted locally after a successful upload. The current (incomplete) file is uploaded as-is on a timer and on process exit.
 
+### S3 key layout (fixed)
+
+The key layout is **not configurable** — it is the contract between tracelog
+and the log viewer, which scans the bucket with prefix listings:
+
+```
+{channel}/{interval}/{host}[_{seq}][_current].jsonl[.gz]
+
+server/2026-06-11/172.31.27.225.jsonl.gz           completed daily file
+server/2026-06-11/172.31.27.225_current.jsonl.gz   live snapshot (overwritten in place)
+server/2026-06-11/172.31.27.225_1.jsonl.gz         size-overflow rotation within the day
+```
+
+- Channel first → prefix-scoped lifecycle rules; one lexicographic listing
+  per channel covers any date range. Name the default channel via
+  `defaultChannel` (e.g. `'server'`); buckets are per-service/per-env, so
+  there is no serviceName segment (the service name is in every file's
+  metadata line).
+- `{host}` is the normalized hostname: EC2-internal names
+  (`ip-A-B-C-D.ec2.internal`) become the dotted IP; anything else is used
+  verbatim. Basenames are underscore-delimited and parse unambiguously as
+  host, optional numeric seq, optional `current` literal.
+- The live file keeps its real interval; when a rotation's completed upload
+  succeeds, the superseded `_current` object is deleted. A host that dies
+  mid-interval leaves its final `_current` upload in place — interval
+  intact, sorted beside its finished siblings.
+
 | Option | Env Var | Default | Description |
 |--------|---------|---------|-------------|
+| `defaultChannel` | `TRACELOG_DEFAULT_CHANNEL` | `default` | Name of the default channel (local filenames + S3 keys) |
 | `s3Bucket` | `TRACELOG_S3_BUCKET` | — | S3 bucket name. If not set, S3 upload is disabled. |
 | `s3Region` | `TRACELOG_S3_REGION` | from AWS env | AWS region |
-| `s3KeyTemplate` | `TRACELOG_S3_KEY_TEMPLATE` | `{serviceName}/{environment}/{date}/{hostname}-{pid}-{timestamp}.jsonl` | S3 key with variable substitution |
 | `s3UploadIntervalMs` | `TRACELOG_S3_UPLOAD_INTERVAL_MS` | `300000` (5 min) | How often to upload the current (incomplete) file |
 | `s3GzipCompleted` | `TRACELOG_S3_GZIP_COMPLETED` | `true` | Gzip completed (rotated) files before uploading to S3 |
 | `s3GzipCurrent` | `TRACELOG_S3_GZIP_CURRENT` | `true` | Gzip the current (incomplete) file before uploading to S3 |

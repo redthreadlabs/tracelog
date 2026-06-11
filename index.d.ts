@@ -318,10 +318,16 @@ declare namespace apm {
     maxLocalRetentionDays?: number;
     maxBufferSize?: number;
 
-    // Tracelog: S3 upload
+    /**
+     * Name of the default channel — the first segment of local filenames
+     * and S3 keys for records not routed elsewhere. Default: 'default'.
+     */
+    defaultChannel?: string;
+
+    // Tracelog: S3 upload. The S3 key layout is fixed:
+    // {channel}/{interval}/{host}[_{seq}][_current].jsonl[.gz]
     s3Bucket?: string;
     s3Region?: string;
-    s3KeyTemplate?: string;
     s3UploadIntervalMs?: number;
     s3GzipCompleted?: boolean;
     s3GzipCurrent?: boolean;
