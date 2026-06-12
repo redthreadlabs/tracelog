@@ -416,9 +416,16 @@ Describes the client environment where the event originated (e.g. a mobile app, 
 | `client.os.name` | string | no | OS name (e.g. `iOS`, `Android`, `Windows`) |
 | `client.os.version` | string | no | OS version |
 | `client.device.model` | string | no | Device model (e.g. `iPhone 16 Pro`, `Pixel 9`) |
+| `client.device.brand` | string | no | Device brand/manufacturer (e.g. `Apple`, `Samsung`) |
 | `client.device.type` | string | no | Device type (e.g. `phone`, `tablet`, `desktop`) |
 | `client.runtime.name` | string | no | Client runtime (e.g. `React Native`, `Chrome`) |
 | `client.runtime.version` | string | no | Runtime version |
+| `client.screen.width` | number | no | Screen width in points/px |
+| `client.screen.height` | number | no | Screen height in points/px |
+| `client.screen.pixel_ratio` | number | no | Device pixel ratio |
+| `client.locale` | string | no | BCP-47 locale (e.g. `en-US`, `zh-Hans-CN`) |
+| `client.timezone` | string | no | IANA timezone (e.g. `America/Los_Angeles`) |
+| `client.device_year_class` | number | no | Device performance year class |
 
 ### Params (optional)
 
