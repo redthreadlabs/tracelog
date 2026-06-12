@@ -174,7 +174,7 @@ the rules.
 
 | Option | Env Var | Default | Description |
 |--------|---------|---------|-------------|
-| `captureBody` | `TRACELOG_CAPTURE_BODY` | `off` | Capture HTTP request body: `off`, `all`, `errors`, `transactions` |
+| `captureBody` | `TRACELOG_CAPTURE_BODY` | `off` | Capture HTTP request body: `off`, `all`, `errors`, `transactions`. Captured bodies are sanitized: form-encoded fields and — since 1.8.0 — JSON bodies **recursively at every depth** have keys matching `sanitizeFieldNames` replaced with `[REDACTED]`. |
 | `captureHeaders` | `TRACELOG_CAPTURE_HEADERS` | `true` | Capture HTTP request/response headers |
 | `sanitizeFieldNames` | `TRACELOG_SANITIZE_FIELD_NAMES` | `[password, secret, *token*, *session*, *cookie*, ...]` | Patterns for header/body fields to redact |
 
