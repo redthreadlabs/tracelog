@@ -240,18 +240,22 @@ test('#getContextFromRequest()', function (t) {
     req.body = { foo: 42 };
     req.headers['content-length'] = JSON.stringify(req.body).length;
     var parsed = parsers.getContextFromRequest(req, conf);
-    t.deepEqual(parsed.body, JSON.stringify({ foo: 42 }));
+    t.deepEqual(parsed.body, { foo: 42 }, 'object bodies embed (1.9.0)');
     t.end();
   });
 
-  t.test('body is object, but not safe to stringify', function (t) {
+  t.test('body is object with a circular reference', function (t) {
     var conf = { captureBody: 'all' };
     var req = getMockReq();
     req.body = { foo: 42 };
     req.body.bar = req.body;
     req.headers['transfer-encoding'] = 'chunked';
     var parsed = parsers.getContextFromRequest(req, conf);
-    t.deepEqual(parsed.body, JSON.stringify({ foo: 42, bar: '[Circular]' }));
+    t.deepEqual(
+      parsed.body,
+      { foo: 42, bar: '[REDACTED]' },
+      'circular reference redacted, body embedded',
+    );
     t.end();
   });
 
@@ -261,7 +265,18 @@ test('#getContextFromRequest()', function (t) {
     req.body = [{ foo: 42 }];
     req.headers['content-length'] = JSON.stringify(req.body).length;
     var parsed = parsers.getContextFromRequest(req, conf);
-    t.deepEqual(parsed.body, JSON.stringify([{ foo: 42 }]));
+    t.deepEqual(parsed.body, [{ foo: 42 }], 'array bodies embed (1.9.0)');
+    t.end();
+  });
+
+  t.test('multipart bodies are never recorded', function (t) {
+    var conf = { captureBody: 'all' };
+    var req = getMockReq();
+    req.body = 'raw multipart payload that could embed file contents';
+    req.headers['content-type'] = 'multipart/form-data; boundary=xyz';
+    req.headers['content-length'] = String(req.body.length);
+    var parsed = parsers.getContextFromRequest(req, conf);
+    t.strictEqual(parsed.body, '[REDACTED: multipart body]');
     t.end();
   });
 

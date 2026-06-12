@@ -452,7 +452,7 @@ Describes the client environment where the event originated (e.g. a mobile app, 
 | `url.raw` | string | Raw URL |
 | `url.full` | string | Full URL |
 | `headers` | object | HTTP headers (values are strings) |
-| `body` | string/object | Request body (if `captureBody` enabled) |
+| `body` | string/object | Request body (if `captureBody` enabled). JSON and form-encoded bodies are embedded as deep-redacted objects; opaque bodies are strings; multipart bodies are never recorded (`[REDACTED: multipart body]`). |
 | `socket.remote_address` | string | Client IP address |
 | `cookies` | object | Parsed cookies |
 

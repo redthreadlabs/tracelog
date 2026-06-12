@@ -42,13 +42,12 @@ test('redacts matching keys at every depth of an object body', (t) => {
   t.end();
 });
 
-test('parses, redacts, and re-stringifies a JSON string body', (t) => {
+test('parses and embeds a JSON string body as a redacted object (1.9.0)', (t) => {
   const body = JSON.stringify({ user: { authorization: 'Bearer x' }, ok: 1 });
   const out = redactKeysFromBody(body, JSON_HEADERS, REGEXES);
-  t.equal(typeof out, 'string');
-  const parsed = JSON.parse(out);
-  t.equal(parsed.user.authorization, '[REDACTED]');
-  t.equal(parsed.ok, 1);
+  t.equal(typeof out, 'object', 'embedded, not re-stringified');
+  t.equal(out.user.authorization, '[REDACTED]');
+  t.equal(out.ok, 1);
   t.end();
 });
 
@@ -105,9 +104,9 @@ test('circular references redact rather than throw', (t) => {
   t.end();
 });
 
-test('form-urlencoded bodies still use the historical top-level behavior', (t) => {
+test('form-urlencoded bodies embed as redacted objects (1.9.0)', (t) => {
   const out = redactKeysFromBody('password=x&keep=y', FORM_HEADERS, REGEXES);
-  t.equal(out, 'password=%5BREDACTED%5D&keep=y');
+  t.deepEqual(out, { password: '[REDACTED]', keep: 'y' });
   t.end();
 });
 
