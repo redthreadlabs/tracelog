@@ -12,7 +12,20 @@ const path = require('path');
 const os = require('os');
 const zlib = require('zlib');
 
-const { S3Uploader, normalizeHost } = require('../../lib/apm-client/s3-uploader');
+const {
+  S3Uploader,
+  normalizeHost,
+  MetaAccumulator,
+} = require('../../lib/apm-client/s3-uploader');
+
+// epoch-µs for a given UTC hour on 2026-06-15 (serialized timestamps are µs)
+function tsAt(hour) {
+  return Date.UTC(2026, 5, 15, hour) * 1000;
+}
+
+function jsonl(...objs) {
+  return objs.map((o) => JSON.stringify(o)).join('\n') + '\n';
+}
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'tracelog-s3-test-'));
@@ -20,18 +33,25 @@ function tmpDir() {
 
 function makeMockS3() {
   return {
-    uploads: [],
-    deletes: [],
+    uploads: [], // log objects only
+    deletes: [], // log object deletes only
+    sidecars: [], // *.meta.json puts
+    sidecarDeletes: [], // *.meta.json deletes
     send(command) {
       const input = command.input;
+      const isSidecar = input.Key && input.Key.endsWith('.meta.json');
       if (command.constructor.name === 'DeleteObjectCommand') {
-        this.deletes.push({ Bucket: input.Bucket, Key: input.Key });
+        (isSidecar ? this.sidecarDeletes : this.deletes).push({
+          Bucket: input.Bucket,
+          Key: input.Key,
+        });
         return Promise.resolve();
       }
+      const bucket = isSidecar ? this.sidecars : this.uploads;
       let body = input.Body;
       // If body is a stream, read it; if buffer/string, keep as-is
       if (Buffer.isBuffer(body) || typeof body === 'string') {
-        this.uploads.push({
+        bucket.push({
           Bucket: input.Bucket,
           Key: input.Key,
           Body: body,
@@ -45,7 +65,7 @@ function makeMockS3() {
         const chunks = [];
         body.on('data', (chunk) => chunks.push(chunk));
         body.on('end', () => {
-          this.uploads.push({
+          bucket.push({
             Bucket: input.Bucket,
             Key: input.Key,
             Body: Buffer.concat(chunks),
@@ -404,5 +424,170 @@ test('host defaults to the normalized os.hostname()', (t) => {
       'key uses normalized hostname',
     );
     t.end();
+  });
+});
+
+// --- Sidecar metadata: MetaAccumulator ---
+
+test('MetaAccumulator buckets records by UTC hour and kind', (t) => {
+  const acc = new MetaAccumulator();
+  acc.addChunk(
+    jsonl(
+      { metadata: { channel: 'server' } }, // not a record
+      { transaction: { timestamp: tsAt(0) } },
+      { span: { timestamp: tsAt(0) } },
+      { span: { timestamp: tsAt(0) } },
+      { error: { timestamp: tsAt(23) } },
+      { event: {} }, // missing timestamp -> malformed
+      { transaction: { timestamp: 0 } }, // garbage timestamp -> malformed
+    ),
+  );
+  acc.flushPartial();
+
+  t.equal(acc.records, 6, 'six records (metadata line excluded)');
+  t.equal(acc.malformed, 2, 'two records had no usable timestamp');
+  t.deepEqual(
+    { ...acc.intervals['2026-06-15T00'] },
+    { transaction: 1, span: 2 },
+    'hour 00 histogram by kind',
+  );
+  t.deepEqual({ ...acc.intervals['2026-06-15T23'] }, { error: 1 }, 'hour 23 histogram');
+
+  let sum = 0;
+  for (const hour of Object.keys(acc.intervals)) {
+    for (const k of Object.keys(acc.intervals[hour])) sum += acc.intervals[hour][k];
+  }
+  t.equal(acc.records, acc.malformed + sum, 'records === malformed + Σ intervals');
+  t.end();
+});
+
+test('MetaAccumulator skips corrupt JSON lines (not counted as records)', (t) => {
+  const acc = new MetaAccumulator();
+  acc.addChunk('{not valid json\n');
+  acc.addChunk(jsonl({ transaction: { timestamp: tsAt(1) } }));
+  acc.flushPartial();
+  t.equal(acc.records, 1, 'only the valid record counts');
+  t.equal(acc.malformed, 0, 'corrupt line is not a malformed record');
+  t.end();
+});
+
+test('MetaAccumulator accumulates across incremental tail chunks', (t) => {
+  const acc = new MetaAccumulator();
+  const a = jsonl({ metadata: {} }, { transaction: { timestamp: tsAt(5) } });
+  const b = jsonl({ span: { timestamp: tsAt(5) } });
+  acc.addChunk(a);
+  acc.offset = Buffer.byteLength(a);
+  acc.addChunk(b);
+  acc.offset += Buffer.byteLength(b);
+  t.equal(acc.records, 2, 'records carried across chunks');
+  t.deepEqual({ ...acc.intervals['2026-06-15T05'] }, { transaction: 1, span: 1 });
+  t.end();
+});
+
+test('MetaAccumulator.toMeta serializes deterministically (stable ETag)', (t) => {
+  // same records, different arrival order -> byte-identical sidecar JSON
+  const a = new MetaAccumulator();
+  a.addChunk(
+    jsonl(
+      { span: { timestamp: tsAt(3) } },
+      { transaction: { timestamp: tsAt(1) } },
+      { error: { timestamp: tsAt(1) } },
+    ),
+  );
+  a.flushPartial();
+  const b = new MetaAccumulator();
+  b.addChunk(
+    jsonl(
+      { error: { timestamp: tsAt(1) } },
+      { span: { timestamp: tsAt(3) } },
+      { transaction: { timestamp: tsAt(1) } },
+    ),
+  );
+  b.flushPartial();
+  t.equal(
+    JSON.stringify(a.toMeta('2026-06-15', 100, 50)),
+    JSON.stringify(b.toMeta('2026-06-15', 100, 50)),
+    'identical content -> identical bytes regardless of record order',
+  );
+  // and the keys are actually sorted
+  const meta = a.toMeta('2026-06-15', 100, 50);
+  t.deepEqual(Object.keys(meta.intervals), ['2026-06-15T01', '2026-06-15T03'], 'hours sorted');
+  t.deepEqual(Object.keys(meta.intervals['2026-06-15T01']), ['error', 'transaction'], 'kinds sorted');
+  t.end();
+});
+
+// --- Sidecar metadata: emission ---
+
+test('uploadCompleted writes a .meta.json sidecar describing the file', (t) => {
+  const mockS3 = makeMockS3();
+  const uploader = makeUploader(mockS3);
+
+  const dir = tmpDir();
+  const filePath = path.join(dir, 'completed.jsonl');
+  fs.writeFileSync(
+    filePath,
+    jsonl(
+      { metadata: { channel: 'server' } },
+      { transaction: { timestamp: tsAt(2) } },
+      { span: { timestamp: tsAt(2) } },
+      { event: {} },
+    ),
+    'utf8',
+  );
+  const uncompressed = fs.statSync(filePath).size;
+
+  uploader.uploadCompleted(filePath, VARS);
+
+  setTimeout(() => {
+    t.equal(mockS3.uploads.length, 1, 'one log object uploaded');
+    t.equal(mockS3.sidecars.length, 1, 'one sidecar uploaded');
+    const sc = mockS3.sidecars[0];
+    t.equal(
+      sc.Key,
+      'server/2026-06-15/172.31.27.225.jsonl.gz.meta.json',
+      'sidecar key is <logkey>.meta.json',
+    );
+    t.equal(sc.ContentType, 'application/json', 'sidecar is plain json');
+    t.equal(sc.ContentEncoding, undefined, 'sidecar is not gzip-encoded');
+    const meta = JSON.parse(sc.Body.toString());
+    t.equal(meta.v, 1, 'schema version');
+    t.equal(meta.interval, '2026-06-15', 'file default interval recorded');
+    t.equal(meta.bytes, uncompressed, 'uncompressed byte size is exact');
+    t.ok(meta.compressed > 0 && meta.compressed < meta.bytes, 'compressed size recorded');
+    t.equal(meta.records, 3, 'record count (metadata line excluded)');
+    t.equal(meta.malformed, 1, 'malformed (timestamp-less) count');
+    t.deepEqual(meta.intervals['2026-06-15T02'], { span: 1, transaction: 1 });
+    t.end();
+  }, 500);
+});
+
+test('uploadCurrent writes a sidecar, and finalizing deletes it', (t) => {
+  const mockS3 = makeMockS3();
+  const uploader = makeUploader(mockS3, { gzipCurrent: false });
+
+  const dir = tmpDir();
+  const filePath = path.join(dir, 'current.jsonl');
+  fs.writeFileSync(
+    filePath,
+    jsonl({ metadata: {} }, { transaction: { timestamp: tsAt(7) } }),
+    'utf8',
+  );
+
+  uploader.uploadCurrent(filePath, VARS, () => {
+    t.equal(mockS3.sidecars.length, 1, 'current upload wrote a sidecar');
+    const meta = JSON.parse(mockS3.sidecars[0].Body.toString());
+    t.equal(meta.records, 1, 'one record in the current snapshot');
+    t.deepEqual(meta.intervals['2026-06-15T07'], { transaction: 1 });
+
+    const completed = path.join(dir, 'completed.jsonl');
+    fs.writeFileSync(completed, jsonl({ metadata: {} }), 'utf8');
+    uploader.uploadCompleted(completed, VARS);
+    setTimeout(() => {
+      t.ok(
+        mockS3.sidecarDeletes.some((d) => d.Key.endsWith('_current.jsonl.meta.json')),
+        'stale current sidecar deleted',
+      );
+      t.end();
+    }, 500);
   });
 });
