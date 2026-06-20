@@ -450,7 +450,7 @@ test('#_encode() - with meta data', function myTest2(t) {
     t.ok(payload.duration > 0);
     t.deepEqual(payload.context, {
       db: { statement: 'foo', type: 'bar' },
-      tags: { baz: '1' },
+      labels: { baz: '1' },
     });
     assert.stacktrace(t, 'myTest2', __filename, payload.stacktrace, agent);
     t.end();

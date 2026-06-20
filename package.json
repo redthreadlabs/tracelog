@@ -1,6 +1,6 @@
 {
   "name": "@redthreadlabs/tracelog",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "description": "Node.js APM instrumentation that writes traces to JSONL files",
   "publishConfig": {
     "access": "public"

@@ -104,7 +104,9 @@ class CapturingTransport {
         events: [],
       };
     }
-    this.channels[channel][type + 's'].push(data);
+    const key = type + 's';
+    if (!this.channels[channel][key]) this.channels[channel][key] = [];
+    this.channels[channel][key].push(data);
     if (cb) {
       process.nextTick(cb);
     }

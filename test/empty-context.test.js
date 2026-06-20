@@ -42,7 +42,7 @@ test('a bare sampled transaction serializes no context at all', (t) => {
   });
 });
 
-test('a transaction with labels serializes only context.tags', (t) => {
+test('a transaction with labels serializes only context.labels', (t) => {
   const agent = new Agent().start(testAgentOpts);
 
   const trans = agent.startTransaction('labeled', 'custom');
@@ -51,7 +51,7 @@ test('a transaction with labels serializes only context.tags', (t) => {
 
   agent.flush(() => {
     const ctx = agent._apmClient.transactions[0].context;
-    t.deepEqual(ctx.tags, { user_id: 'u1' }, 'tags present');
+    t.deepEqual(ctx.labels, { user_id: 'u1' }, 'labels present');
     t.equal(ctx.user, undefined, 'no empty user');
     t.equal(ctx.custom, undefined, 'no empty custom');
     t.equal(ctx.service, undefined, 'no empty service');
@@ -72,7 +72,7 @@ test('a transaction with a user serializes only context.user', (t) => {
   agent.flush(() => {
     const ctx = agent._apmClient.transactions[0].context;
     t.deepEqual(ctx.user, { id: 'u-42' }, 'user present');
-    t.equal(ctx.tags, undefined, 'no empty tags');
+    t.equal(ctx.labels, undefined, 'no empty labels');
     agent.destroy();
     t.end();
   });
@@ -90,7 +90,7 @@ test('a bare captured error serializes no context at all', (t) => {
   });
 });
 
-test('an error with labels serializes only context.tags', (t) => {
+test('an error with labels serializes only context.labels', (t) => {
   const agent = new Agent().start(testAgentOpts);
 
   agent.captureError(
@@ -98,7 +98,7 @@ test('an error with labels serializes only context.tags', (t) => {
     { labels: { region: 'us-east-1' } },
     () => {
       const ctx = agent._apmClient.errors[0].context;
-      t.deepEqual(ctx.tags, { region: 'us-east-1' }, 'tags present');
+      t.deepEqual(ctx.labels, { region: 'us-east-1' }, 'labels present');
       t.equal(ctx.user, undefined, 'no empty user');
       t.equal(ctx.custom, undefined, 'no empty custom');
       agent.destroy();
@@ -115,7 +115,7 @@ test('an error inside a transaction inherits only populated members', (t) => {
   agent.captureError(new Error('inherits user'), () => {
     const ctx = agent._apmClient.errors[0].context;
     t.deepEqual(ctx.user, { id: 'u-7' }, 'user inherited from transaction');
-    t.equal(ctx.tags, undefined, 'no empty tags');
+    t.equal(ctx.labels, undefined, 'no empty labels');
     t.equal(ctx.custom, undefined, 'no empty custom');
     trans.end();
     agent.destroy();

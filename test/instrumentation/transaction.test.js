@@ -511,7 +511,7 @@ test('#_encode() - with meta data', function (t) {
   t.strictEqual(payload.result, 'baz');
   t.deepEqual(payload.context, {
     user: { foo: 1 },
-    tags: { bar: '1' },
+    labels: { bar: '1' },
     custom: { baz: 1 },
   });
 

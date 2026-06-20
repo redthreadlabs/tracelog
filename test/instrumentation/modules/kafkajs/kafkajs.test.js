@@ -158,7 +158,7 @@ const testFixtures = [
         delete t.span_count;
         delete t.result;
         delete t.context.user;
-        delete t.context.tags;
+        delete t.context.labels;
         delete t.context.custom;
         delete t.context.cloud;
         delete t.context.message.age;
@@ -340,7 +340,7 @@ const testFixtures = [
         delete t.span_count;
         delete t.result;
         delete t.context.user;
-        delete t.context.tags;
+        delete t.context.labels;
         delete t.context.custom;
         delete t.context.cloud;
       });
@@ -468,7 +468,7 @@ const testFixtures = [
         delete t.span_count;
         delete t.result;
         delete t.context.user;
-        delete t.context.tags;
+        delete t.context.labels;
         delete t.context.custom;
         delete t.context.cloud;
       });
@@ -641,7 +641,7 @@ const testFixtures = [
         delete t.span_count;
         delete t.result;
         delete t.context.user;
-        delete t.context.tags;
+        delete t.context.labels;
         delete t.context.custom;
         delete t.context.cloud;
         delete t.context.message.age;
