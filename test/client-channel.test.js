@@ -81,7 +81,7 @@ test('writeRecordOrigin writes a metadata record carrying the RecordOrigin', (t)
     runtime: { name: 'react-native', version: '0.85' },
     os: { name: 'iOS', version: '18' },
     device: {
-      model: 'iPhone15', brand: 'Apple', type: 'phone', year_class: 2022,
+      id: 'install-abc', model: 'iPhone15', brand: 'Apple', type: 'phone', year_class: 2022,
       screen: { width: 393, height: 852, pixel_ratio: 3 },
     },
     bogus: 'dropped',
@@ -93,6 +93,7 @@ test('writeRecordOrigin writes a metadata record carrying the RecordOrigin', (t)
   t.equal(o.lifetime_id, HEX16, 'lifetime_id is the join key');
   t.deepEqual(o.service, { name: 'duiduidui-app', version: '2.6.0' });
   t.deepEqual(o.runtime, { name: 'react-native', version: '0.85' });
+  t.equal(o.device.id, 'install-abc', 'opaque device id preserved');
   t.equal(o.device.year_class, 2022, 'numeric device field preserved');
   t.deepEqual(o.device.screen, { width: 393, height: 852, pixel_ratio: 3 });
   t.equal(o.bogus, undefined, 'unknown fields stripped');
