@@ -1,6 +1,6 @@
 {
   "name": "@redthreadlabs/tracelog",
-  "version": "1.13.1",
+  "version": "1.14.0",
   "description": "Node.js APM instrumentation that writes traces to JSONL files",
   "publishConfig": {
     "access": "public"
@@ -83,6 +83,7 @@
     "unicode-byte-truncate": "^1.0.0"
   },
   "devDependencies": {
+    "@hono/node-server": "^1.19.17",
     "@types/node": "^25.0.3",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^10.0.1",
@@ -92,6 +93,7 @@
     "eslint-plugin-prettier": "^5.0.0",
     "eslint-plugin-promise": "^7.0.0",
     "get-port": "^5.1.1",
+    "hono": "^4.13.3",
     "prettier": "^3.0.0",
     "tape": "^5.0.0",
     "typescript": "^5.0.2"

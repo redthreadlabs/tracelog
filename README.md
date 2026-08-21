@@ -92,7 +92,7 @@ All options can be set via `require('tracelog').start({...})`, via environment v
 | `environment` | `TRACELOG_ENVIRONMENT` | `NODE_ENV` or `development` | Deployment environment |
 | `logDir` | `TRACELOG_LOG_DIR` | `.` (cwd) | Directory for JSONL output files |
 | `logFilePrefix` | `TRACELOG_LOG_FILE_PREFIX` | `tracelog` | Filename prefix (files are named `{prefix}-{date}.jsonl`) |
-| `logMaxFileSize` | — | `104857600` (100MB) | Rotate when file exceeds this size in bytes |
+| `logMaxFileSize` | `TRACELOG_LOG_MAX_FILE_SIZE` | `104857600` (100MB) | Rotate when file exceeds this size in bytes |
 | `logRotationSchedule` | `TRACELOG_LOG_ROTATION_SCHEDULE` | `daily` | Time-based rotation: `daily` or `hourly` |
 | `s3Bucket` | `TRACELOG_S3_BUCKET` | — | S3 bucket for log upload (disabled if not set) |
 | `active` | `TRACELOG_ACTIVE` | `true` | Enable/disable the agent entirely |
@@ -123,7 +123,32 @@ Available filter methods: `addFilter(fn)` (adds to all types), `addTransactionFi
 
 ## Auto-instrumented modules
 
-Express, Fastify, Koa, Hapi, Connect, Restify, HTTP/HTTPS, fetch/undici, PostgreSQL, MySQL, MongoDB, Redis, Elasticsearch, Cassandra, Memcached, AWS SDK (v2 & v3), GraphQL, Apollo Server, Kafka, WebSockets, generic-pool, Knex, Tedious (MSSQL), Handlebars, Pug, and more.
+Express, Fastify, Hono, Koa, Hapi, Connect, Restify, HTTP/HTTPS, fetch/undici, PostgreSQL, MySQL, MongoDB, Redis, Elasticsearch, Cassandra, Memcached, AWS SDK (v2 & v3), GraphQL, Apollo Server, Kafka, WebSockets, generic-pool, Knex, Tedious (MSSQL), Handlebars, Pug, and more.
+
+### Hono
+
+Hono (>=4) is instrumented under both CommonJS and ESM. Transactions are named
+after the route the request matched — `PUT /objects/:id`, carrying the mount
+prefix of an app registered with `app.route()` — errors thrown by a handler are
+captured, and a body the handler parsed is recorded under `captureBody`
+(nothing is read from the request that the app did not read itself).
+
+Requests matching no route are all named `<METHOD> unknown route`, rather than
+one name per probed URL, so internet-scanner traffic cannot swamp the
+per-endpoint statistics — and can be diverted wholesale:
+
+```js
+transactionChannels: [{ pattern: '* unknown route*', channel: 'unknown-route' }],
+```
+
+An `HTTPException` with a 4xx status is control flow rather than failure and is
+not reported as an error; 5xx ones are. Serve the app with
+[@hono/node-server](https://github.com/honojs/node-server). Hono is ESM-first,
+so an ESM service needs the loader as well as the preloaded agent:
+
+```bash
+node --experimental-loader tracelog/loader.mjs -r tracelog/start.js server.js
+```
 
 ## License
 
