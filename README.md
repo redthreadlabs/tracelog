@@ -7,7 +7,7 @@ Forked from [elastic-apm-node](https://github.com/elastic/apm-agent-nodejs) v4.1
 ## Installation
 
 ```
-npm install tracelog
+npm install @redthreadlabs/tracelog
 ```
 
 ## Usage
@@ -15,7 +15,7 @@ npm install tracelog
 Start tracelog at the very top of your application, before importing anything else:
 
 ```js
-require('tracelog').start({
+require('@redthreadlabs/tracelog').start({
   serviceName: 'my-api',
   serviceVersion: '1.0.0',
   logDir: '/var/log/myapp',
@@ -33,7 +33,7 @@ Or use the auto-start entry point with environment variables:
 
 ```bash
 TRACELOG_SERVICE_NAME=my-api \
-node -r tracelog/start app.js
+node -r @redthreadlabs/tracelog/start app.js
 ```
 
 That's it. Tracelog will automatically instrument your HTTP servers, database clients, and other modules, writing transaction, span, error, and metric data to the JSONL file. If `s3Bucket` is set, completed (rotated) files are gzipped and uploaded to S3, then deleted locally.
@@ -48,7 +48,7 @@ apm.captureEvent('page_view', {
   message: 'User viewed dashboard',
   level: 'info',
   user: { id: 'u-abc123', username: 'jane_doe' },
-  client: { name: 'duiduidui-ios', version: '2.4.1' },
+  client: { name: 'acme-ios', version: '2.4.1' },
   params: { page: '/dashboard', referrer: '/home' },
 });
 ```
@@ -76,14 +76,14 @@ Each line is a self-contained JSON object with one top-level key identifying the
 {"span":{"id":"ghi789","transaction_id":"abc123","trace_id":"def456","parent_id":"abc123","name":"SELECT * FROM users","type":"db","subtype":"postgresql","duration":12.3,"sync":true,"outcome":"success"}}
 {"error":{"id":"err001","timestamp":1709740800000000,"exception":{"message":"Something broke","type":"TypeError","handled":false,"stacktrace":[...]}}}
 {"metricset":{"timestamp":1709740800000000,"samples":{"system.process.cpu.total.norm.pct":{"value":0.023},"nodejs.memory.heap.used.bytes":{"value":52428800}}}}
-{"event":{"type":"page_view","timestamp":1719484200000,"message":"User viewed dashboard","level":"info","user":{"id":"u-abc123","username":"jane_doe"},"client":{"name":"duiduidui-ios","version":"2.4.1","os":{"name":"iOS","version":"18.2"},"device":{"model":"iPhone 16 Pro","type":"phone"}},"params":{"page":"/dashboard"}}}
+{"event":{"type":"page_view","timestamp":1719484200000,"message":"User viewed dashboard","level":"info","user":{"id":"u-abc123","username":"jane_doe"},"client":{"name":"acme-ios","version":"2.4.1","os":{"name":"iOS","version":"18.2"},"device":{"model":"iPhone 16 Pro","type":"phone"}},"params":{"page":"/dashboard"}}}
 ```
 
 For the complete schema of every field in each event type, see **[SCHEMA.md](SCHEMA.md)**.
 
 ## Configuration
 
-All options can be set via `require('tracelog').start({...})`, via environment variables, or in a `tracelog.config.js` file.
+All options can be set via `require('@redthreadlabs/tracelog').start({...})`, via environment variables, or in a `tracelog.config.js` file.
 
 | Option | Env Var | Default | Description |
 |--------|---------|---------|-------------|
@@ -105,7 +105,7 @@ For the complete list of all configuration options (instrumentation, sampling, e
 Filter functions let you modify or drop events before they are written. Return the (possibly modified) object to keep it, or return a falsy value to drop it.
 
 ```js
-const apm = require('tracelog').start({ serviceName: 'my-api' });
+const apm = require('@redthreadlabs/tracelog').start({ serviceName: 'my-api' });
 
 // Drop all debug-level custom events
 apm.addEventFilter((event) => {
@@ -147,7 +147,8 @@ not reported as an error; 5xx ones are. Serve the app with
 so an ESM service needs the loader as well as the preloaded agent:
 
 ```bash
-node --experimental-loader tracelog/loader.mjs -r tracelog/start.js server.js
+node --experimental-loader @redthreadlabs/tracelog/loader.mjs \
+  -r @redthreadlabs/tracelog/start.js server.js
 ```
 
 ## License

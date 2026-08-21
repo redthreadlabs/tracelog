@@ -411,7 +411,7 @@ Describes the client environment where the event originated (e.g. a mobile app, 
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `client.name` | string | no | App/client name (e.g. `duiduidui-ios`, `duiduidui-web`) |
+| `client.name` | string | no | App/client name (e.g. `acme-ios`, `acme-web`) |
 | `client.version` | string | no | App version |
 | `client.os.name` | string | no | OS name (e.g. `iOS`, `Android`, `Windows`) |
 | `client.os.version` | string | no | OS version |

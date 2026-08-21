@@ -1,6 +1,6 @@
 # Tracelog Configuration Reference
 
-All options can be set via `require('tracelog').start({...})`, via environment variables, or in a `tracelog.config.js` file.
+All options can be set via `require('@redthreadlabs/tracelog').start({...})`, via environment variables, or in a `tracelog.config.js` file.
 
 ---
 
