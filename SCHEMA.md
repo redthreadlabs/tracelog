@@ -96,7 +96,7 @@ when every member is empty.
 | `context.request` | object | no | HTTP request details (see [HTTP Request](#http-request)) |
 | `context.response` | object | no | HTTP response details (see [HTTP Response](#http-response)) |
 | `context.user` | object | no | User identity (see [User](#user)) |
-| `context.tags` | object | no | User-defined labels (string/number/boolean values) |
+| `context.labels` | object | no | User-defined labels (string/number/boolean values) |
 | `context.custom` | object | no | Arbitrary custom context data |
 | `context.service` | object | no | Service context overrides |
 | `context.cloud` | object | no | Cloud context (e.g. cloud origin for incoming requests) |
@@ -183,7 +183,7 @@ Represents a unit of work within a transaction (e.g. a database query, an outgoi
 | `context.service.target.type` | string | no | Target type (e.g. `postgresql`, `redis`) |
 | `context.service.target.name` | string | no | Target name (e.g. database name) |
 | `context.message` | object | no | Message queue context (see [Message](#message)) |
-| `context.tags` | object | no | User-defined labels |
+| `context.labels` | object | no | User-defined labels |
 
 ### Stack trace (optional)
 
@@ -277,7 +277,7 @@ Present when the error was captured from a string message (e.g. `captureError('s
 
 ### Context (optional)
 
-Same structure as [transaction context](#context-only-present-when-sampled-is-true): `request`, `response`, `user`, `tags`, `custom`, `service`, `message`, `cloud`.
+Same structure as [transaction context](#context-only-present-when-sampled-is-true): `request`, `response`, `user`, `labels`, `custom`, `service`, `message`, `cloud`.
 
 ---
 
@@ -432,6 +432,75 @@ Describes the client environment where the event originated (e.g. a mobile app, 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `params` | object | no | Open-ended key-value data specific to this event type |
+
+---
+
+## Client-ingested records
+
+Records a server forwards from remote clients (a browser, a React Native app)
+through a channel's client-ingest API: `writeClientEvents(events)`,
+`writeTransaction(t)`, `writeSpan(s)`, and `writeRecordOrigin(origin)`. They
+follow the tracelog-schema wire format (`EventRecord`, `TransactionRecord`,
+`SpanRecord`, `RecordOrigin`) and are forwarded as-is after validation:
+unknown fields are dropped, epoch-µs timestamps are kept unchanged.
+
+### Client event
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | yes | Event type, e.g. `page.view`. Defaults to `client-log`. |
+| `timestamp` | integer | yes | Microseconds since epoch, as sent |
+| `level` | string | yes | `debug`, `info`, `warn`, `error`. Defaults to `info`. |
+| `message` | string | no | Human-readable description |
+| `locale` | string | no | UI locale at record time, e.g. `en-US` |
+| `tz_offset` | number | no | Minutes east of UTC at record time |
+| `lifetime_id` | string | no | 16-hex id of the client lifetime; joins to the in-stream `metadata` origin |
+| `error` | object | no | `message`, `type`, `code` (stringified), `stack` |
+| `context` | object | no | See [Client record context](#client-record-context) |
+
+A client event never carries `duration` or `params`: timed work is a
+transaction or span, attributes are `context.labels`.
+
+### Client record context
+
+Carried by client events, transactions and spans alike. Every member is
+optional; a sub-object missing a required field is dropped whole, and
+`context` is omitted when nothing survives.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `context.labels` | object | Flat attribute bag; string, number and boolean values only |
+| `context.user.id` | string | The signed-in user the record is attributed to (stamped by the ingesting server) |
+| `context.visitor.id` | string | Required in `visitor`. The long-lived first-party visitor id, one per person or agent credential |
+| `context.visitor.kind` | string | Required in `visitor`. `human`, `agent` or `system` |
+| `context.visit.id` | string | Required in `visit`. The client-generated visit id |
+| `context.visit.n` | number | The visitor's visit ordinal, when known |
+| `context.actor.via` | string | Required in `actor`. The surface: `browser`, `fetch`, `cli`, `mcp`, `thread`, `edge`, `server` |
+| `context.actor.agent.name` | string | The client software's name (required in `actor.agent`) |
+| `context.actor.agent.version` | string | The client software's version |
+| `context.page.url` | string | Required in `page`. The full URL |
+| `context.page.path` | string | Required in `page`. The URL path |
+| `context.page.title` | string | The page title |
+| `context.page.referrer` | string | The referring URL |
+| `context.page.release` | string | The documentation release shown on the page |
+| `context.campaign` | object | First-touch UTM parameters: `source`, `medium`, `name`, `term`, `content` (strings) |
+| `context.geo` | object | `country`, `region`, `city` (strings), derived server-side from the IP |
+| `context.entity` | object | The consumer's own things this record concerns, by id or address; one level, string values only |
+
+### Client origin (in-stream `metadata`)
+
+Written by `writeRecordOrigin` once per client lifetime (and again when it
+changes), keyed by `lifetime_id`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `lifetime_id` | string | no | 16-hex join key from the lifetime's records |
+| `schema` | string | no | The tracelog-schema version the batch was written against, e.g. `0.6.0` |
+| `service.name` / `service.version` | string | no | The client application |
+| `runtime.name` / `runtime.version` | string | no | e.g. `react-native`, `browser` |
+| `os.name` / `os.version` | string | no | Operating system |
+| `host.name` | string | no | Host name |
+| `device` | object | no | `id` (opaque, consumer-defined), `model`, `brand`, `type`, `year_class`, `screen` (`width`, `height`, `pixel_ratio`) |
 
 ---
 
