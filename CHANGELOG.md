@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.19.1
+
+- deps: `@redthreadlabs/tracelog-schema` ^0.5.1 -> ^0.6.0. Client ingest
+  imports `sanitizeContext` from the schema; `lib/client-context.js` is
+  deleted. No behaviour change.
+
 ## 1.19.0
 
 - Client ingest keeps the tracelog-schema 0.6.0 analytics context on events,
