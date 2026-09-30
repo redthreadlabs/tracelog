@@ -240,3 +240,19 @@ apm.logger.fatal('')
     }
   }
 }
+
+{
+  const context = {
+    labels: { noun: 'project', ok: true },
+    user: { id: 'u_1' },
+    visitor: { id: 'v_1', kind: 'human' as const },
+    actor: { via: 'server' as const },
+    entity: { project: 'proj_1' }
+  }
+  apm.writeEvent('audit.project.create', { message: 'created', level: 'info', context })
+  apm.writeEvents([{ type: 'verb.call', context }])
+  const ch = apm.getChannel('client')
+  ch.writeEvent('audit.project.create', { context })
+  ch.writeClientEvents([{ type: 'page.view', timestamp: 1700000000000000, level: 'info', message: '', context }])
+  ch.writeRecordOrigin({ lifetime_id: 'a'.repeat(16), service: { name: 'web' } })
+}

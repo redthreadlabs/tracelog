@@ -12,6 +12,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { Connect } from './types/connect';
 import { AwsLambda } from './types/aws-lambda';
+import type { RecordContext } from '@redthreadlabs/tracelog-schema';
 
 declare namespace apm {
   // Agent API
@@ -342,6 +343,18 @@ declare namespace apm {
     writeError (err: Error | string | ParameterizedMessageObject, options?: CaptureErrorOptions, callback?: CaptureErrorCallback): void;
     writeTransaction (transaction: object): void;
     writeSpan (span: object): void;
+    /**
+     * Forward client-originated event records (tracelog-schema `EventRecord`,
+     * epoch-µs timestamps) as-is after validation. Untrusted input: unknown
+     * fields are dropped and `context` goes through `sanitizeContext`.
+     */
+    writeClientEvents (events: ReadonlyArray<unknown>): void;
+    /**
+     * Write a client's `RecordOrigin` (service + environment, keyed by
+     * `lifetime_id`) as an in-stream `metadata` record. Validated like
+     * `writeClientEvents`.
+     */
+    writeRecordOrigin (origin: unknown): void;
   }
 
   interface TransactionChannelRule {
@@ -357,8 +370,17 @@ declare namespace apm {
     timestamp?: number;
     duration?: number;
     error?: Error | any;
+    /**
+     * The record context: labels, user, visitor, visit, actor, page,
+     * campaign, geo, entity. Filtered by tracelog-schema's `sanitizeContext`
+     * and written as the event's `context`.
+     */
+    context?: RecordContext;
+    /** @deprecated Use `context.user`. */
     user?: EventUserInfo;
+    /** @deprecated Client environment belongs in the record origin. */
     client?: EventClientInfo;
+    /** @deprecated Use `context.labels`. */
     params?: { [key: string]: any };
   }
 

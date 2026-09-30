@@ -381,6 +381,26 @@ A custom event for recording arbitrary application-level occurrences: user analy
 | `level` | string | yes | Severity level: `debug`, `info`, `warn`, `error`, `fatal`. Defaults to `info`. |
 | `trace_id` | string | no | Trace ID of the transaction that was active when the event was written (single-event writes only; batch writes never stamp trace context) |
 | `transaction_id` | string | no | ID of the active transaction (see `trace_id`) |
+| `context` | object | no | The record context, from the `writeEvent` `context` option; see [Event context](#event-context) |
+
+### Event context
+
+`writeEvent(type, { context })` and `writeEvents([{ type, context }])` write
+the tracelog-schema `RecordContext`, filtered by the schema's
+`sanitizeContext`: the same members, with the same rules, as a
+[client record context](#client-record-context) — `labels`, `user.id`,
+`visitor`, `visit`, `actor`, `page`, `campaign`, `geo` and `entity`. A
+sub-object missing a required field is dropped whole, and `context` is
+omitted when nothing survives. Trace correlation is not context: an event
+written inside a transaction carries `trace_id` and `transaction_id` on the
+record itself, never in `context.labels`.
+
+```jsonl
+{"event":{"type":"audit.project.create","timestamp":1790000000000000,"level":"info","message":"created","context":{"labels":{"noun":"project"},"user":{"id":"u_1"},"visitor":{"id":"v_1","kind":"human"},"actor":{"via":"browser"},"entity":{"project":"proj_1"}},"trace_id":"0af7651916cd43dd8448eb211c80319c","transaction_id":"b7ad6b7169203331"}}
+```
+
+Without `context`, the deprecated `params` is also written as
+`context.labels`, and `user.id` as `context.user.id`.
 
 ### Error (optional)
 
@@ -395,9 +415,10 @@ as `{message, code}`).
 | `error.code` | string | no | Error code (`err.code`), stringified |
 | `error.stack` | string | no | Stack trace when present |
 
-### User (optional)
+### User (optional, deprecated)
 
-Identity of the end-user who triggered the event.
+Identity of the end-user who triggered the event. Deprecated in 1.20.0 for
+`context.user`; removed in the next minor.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -405,9 +426,10 @@ Identity of the end-user who triggered the event.
 | `user.email` | string | no | User email address |
 | `user.username` | string | no | Display name or username |
 
-### Client (optional)
+### Client (optional, deprecated)
 
-Describes the client environment where the event originated (e.g. a mobile app, browser).
+Deprecated in 1.20.0 (a client's environment is its in-stream origin);
+removed in the next minor. Describes the client environment where the event originated (e.g. a mobile app, browser).
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -427,7 +449,9 @@ Describes the client environment where the event originated (e.g. a mobile app, 
 | `client.timezone` | string | no | IANA timezone (e.g. `America/Los_Angeles`) |
 | `client.device_year_class` | number | no | Device performance year class |
 
-### Params (optional)
+### Params (optional, deprecated)
+
+Deprecated in 1.20.0 for `context.labels`; removed in the next minor.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

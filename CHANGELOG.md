@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.20.0
+
+- `writeEvent(type, { message, level, timestamp, error, context })` and
+  `writeEvents([{ type, …, context }])` (agent and channel) take a
+  `context`: the tracelog-schema `RecordContext` (`labels`, `user`,
+  `visitor`, `visit`, `actor`, `page`, `campaign`, `geo`, `entity`),
+  filtered by the schema's `sanitizeContext` and written as the event's
+  `context`. A single write inside a transaction keeps stamping `trace_id`
+  and `transaction_id` on the record, not in `labels`. A server can now
+  write its own analytics events without going through `writeClientEvents`.
+- Deprecated: the `params`, `user` and `client` event options. They are
+  still written as before for this minor and are removed in the next; when
+  no `context` is given, `params` is also written as `context.labels` and
+  `user.id` as `context.user.id`.
+- `index.d.ts` declares `Channel.writeClientEvents`,
+  `Channel.writeRecordOrigin` and the `context` event option (typed as the
+  schema's `RecordContext`).
+- SCHEMA.md documents the server event's `context`.
+- Known, unchanged: `npm test` as a whole fails (a missing
+  `test/_mock_apm_server` and `npm run lint` on ESLint 9's config); the
+  self-contained suites pass.
+
 ## 1.19.1
 
 - deps: `@redthreadlabs/tracelog-schema` ^0.5.1 -> ^0.6.0. Client ingest

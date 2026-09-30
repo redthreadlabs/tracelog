@@ -254,3 +254,41 @@ test('malformed analytics sub-objects are dropped, the rest kept', (t) => {
   agent.destroy();
   t.end();
 });
+
+test('a server writeEvent with every context field lands under context, trace ids on the record', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tracelog-server-event-'));
+  const agent = new Agent().start({
+    ...testAgentOpts,
+    transport() {
+      return new JsonlFileClient({
+        logDir: dir, serviceName: 'test-client-channel', serviceVersion: '1.0.0',
+        environment: 'test', flushIntervalMs: 60000,
+      });
+    },
+  });
+  const trans = agent.startTransaction('POST /projects', 'request');
+  agent.writeEvent('audit.project.create', { message: 'created', level: 'info', context: FULL_CONTEXT });
+  agent.getChannel('audit').writeEvent('audit.project.create', { context: FULL_CONTEXT });
+  trans.end();
+  agent._apmClient.flush();
+
+  const read = (match) => {
+    const file = fs.readdirSync(dir).find(match);
+    return fs.readFileSync(path.join(dir, file), 'utf8').trim().split('\n').map(JSON.parse)
+      .filter((l) => l.event).map((l) => l.event);
+  };
+  const [server] = read((f) => !f.includes('-audit-'));
+  const [routed] = read((f) => f.includes('-audit-'));
+  for (const [name, ev] of [['server', server], ['channel', routed]]) {
+    t.deepEqual(ev.context, FULL_CONTEXT, `${name}: every context field under context`);
+    t.equal(ev.trace_id, trans.traceId, `${name}: trace_id on the record`);
+    t.equal(ev.transaction_id, trans.id, `${name}: transaction_id on the record`);
+    t.equal(ev.context.labels.trace_id, undefined, `${name}: no trace ids in labels`);
+    t.equal(ev.params, undefined, `${name}: no params`);
+  }
+  t.equal(server.type, 'audit.project.create');
+  t.equal(server.message, 'created');
+  agent.destroy();
+  fs.rmSync(dir, { recursive: true, force: true });
+  t.end();
+});

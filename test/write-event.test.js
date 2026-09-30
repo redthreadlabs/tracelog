@@ -269,3 +269,44 @@ test('batch writeEvents are never stamped with trace context', (t) => {
   agent.destroy();
   t.end();
 });
+
+// --- context ---
+
+test('writeEvent sanitizes its context with the schema filter', (t) => {
+  const agent = new Agent().start(testAgentOpts);
+  agent.writeEvent('verb.call', {
+    context: {
+      labels: { noun: 'run', nested: { x: 1 } },
+      actor: { via: 'nowhere' },
+      entity: { run: 'run_1' },
+    },
+  });
+  t.deepEqual(agent._apmClient.events[0].context, {
+    labels: { noun: 'run' },
+    entity: { run: 'run_1' },
+  });
+  agent.destroy();
+  t.end();
+});
+
+test('writeEvents items carry their own context', (t) => {
+  const agent = new Agent().start(testAgentOpts);
+  agent.writeEvents([{ type: 'a', context: { labels: { k: 1 } } }, { type: 'b' }]);
+  t.deepEqual(agent._apmClient.events[0].context, { labels: { k: 1 } });
+  t.equal(agent._apmClient.events[1].context, undefined, 'no context when none given');
+  agent.destroy();
+  t.end();
+});
+
+test('deprecated params/user are kept and read as context when no context is given', (t) => {
+  const agent = new Agent().start(testAgentOpts);
+  agent.writeEvent('legacy', { params: { a: 1, deep: { b: 2 } }, user: { id: 7, email: 'x@y' } });
+  agent.writeEvent('both', { params: { a: 1 }, context: { labels: { c: 3 } } });
+  const [legacy, both] = agent._apmClient.events;
+  t.deepEqual(legacy.params, { a: 1, deep: { b: 2 } }, 'params still written');
+  t.deepEqual(legacy.user, { id: 7, email: 'x@y' }, 'user still written');
+  t.deepEqual(legacy.context, { labels: { a: 1 }, user: { id: '7' } }, 'params → labels, user.id → user');
+  t.deepEqual(both.context, { labels: { c: 3 } }, 'an explicit context wins');
+  agent.destroy();
+  t.end();
+});
