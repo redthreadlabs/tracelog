@@ -81,6 +81,48 @@ Each line is a self-contained JSON object with one top-level key identifying the
 
 For the complete schema of every field in each event type, see **[SCHEMA.md](SCHEMA.md)**.
 
+## Direct sink
+
+Instead of (or as well as) files, tracelog can hand each batch of records to a
+function in your process — to write them into your own database, for example.
+Select it with `sink: 'callback'` (nothing is written to disk) or
+`sink: 'both'` (the files keep working exactly as before), or
+`TRACELOG_SINK=callback`, and register the handler once your app's modules
+exist:
+
+```js
+const apm = require('@redthreadlabs/tracelog'); // started by the launcher
+
+const unsubscribe = apm.onBatch(async (records, origin) => {
+  // origin: the file sink's `metadata` header for this channel
+  //   { channel, service, process, system, cloud?, labels? }
+  // records: [{ kind, record }, ...] in arrival order, all from origin.channel
+  //   kind: 'transaction' | 'span' | 'error' | 'metricset' | 'event' | 'metadata'
+  //   record: exactly what the file sink writes under that kind's key
+  for (const { kind, record } of records) {
+    // ...
+  }
+});
+```
+
+- **When.** One call per channel per batch: as soon as `sinkBatchSize`
+  (500) records are queued, on the flush cadence (`logFlushIntervalMs`,
+  1 s), on `apm.flush()` (whose callback waits for the handler) and on
+  `apm.destroy()`. A batch never holds more than `sinkBatchSize` records.
+- **Before the handler.** A preloaded agent (`-r @redthreadlabs/tracelog/start`)
+  starts before your modules load, so records queue until `onBatch` is called.
+- **Bounded.** The queue holds at most `sinkMaxQueueSize` (5000) records
+  across channels; beyond that the oldest is dropped, counted in
+  `apm.sinkDropCount` and logged as a warning (at most once a minute). The
+  process never blocks on the sink.
+- **Async handlers.** If the handler returns a promise, the next batch waits
+  for it while new records queue. A throw or rejection is logged and that
+  batch is not retried.
+- **Channels.** Records written through `apm.getChannel(name)` (including
+  `writeClientEvents` and `writeRecordOrigin`, whose client origin arrives as a
+  `metadata` record) come in batches whose `origin.channel` is `name`.
+- `apm.onBatch(null)`, or calling the returned function, removes the handler.
+
 ## Configuration
 
 All options can be set via `require('@redthreadlabs/tracelog').start({...})`, via environment variables, or in a `tracelog.config.js` file.

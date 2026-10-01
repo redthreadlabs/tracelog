@@ -256,3 +256,18 @@ apm.logger.fatal('')
   ch.writeClientEvents([{ type: 'page.view', timestamp: 1700000000000000, level: 'info', message: '', context }])
   ch.writeRecordOrigin({ lifetime_id: 'a'.repeat(16), service: { name: 'web' } })
 }
+
+{
+  apm.start({ serviceName: 'svc', sink: 'both', sinkBatchSize: 200, sinkMaxQueueSize: 2000 })
+  const unsubscribe = apm.onBatch(async (records, origin) => {
+    const channel: string | undefined = origin?.channel
+    for (const { kind, record } of records) {
+      if (kind === 'span') void record.trace_id
+    }
+    void channel
+  })
+  unsubscribe()
+  apm.onBatch(null)
+  const dropped: number = apm.sinkDropCount
+  void dropped
+}

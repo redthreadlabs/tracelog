@@ -11,6 +11,13 @@ serializes empty `{}` placeholder objects.
 
 All string fields are subject to truncation (see [Truncation](#truncation) at the bottom).
 
+The callback sink (`sink: 'callback'` or `'both'`, see README "Direct sink")
+hands the same records to `apm.onBatch((records, origin) => …)` instead of a
+file: each line `{"<kind>": record}` arrives as `{ kind, record }` in
+`records`, and the file's `metadata` header arrives as `origin` (with
+`channel`) on every batch. A client origin written in-stream
+(`writeRecordOrigin`) arrives as a record of kind `metadata`.
+
 ---
 
 ## metadata

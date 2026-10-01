@@ -19,8 +19,11 @@ lib/instrumentation/        # Module patching (RITM/IITM hooks), run context
   run-context/              # AsyncLocalStorage-based context tracking
   modules/                  # 43 module patchers (express, pg, mongodb, etc.)
 lib/apm-client/
-  apm-client.js             # Client factory — creates JsonlFileClient or NoopApmClient
+  apm-client.js             # Client factory — picks the sink (`sink` config) or NoopApmClient
   jsonl-file-client.js      # JSONL file transport (buffering, rotation, truncation)
+  callback-client.js        # Direct sink: batches to the `apm.onBatch()` handler, bounded queue
+  tee-client.js             # `sink: both` — file client and callback client together
+  origin.js                 # The writer's origin (metadata header) and truncation options
   noop-apm-client.js        # No-op client for contextPropagationOnly mode
   s3-uploader.js            # S3 upload (gzip, completed/current file handling)
   ndjson.js                 # NDJSON serialization utility
@@ -64,7 +67,7 @@ Six record types: `metadata`, `transaction`, `span`, `error`, `metricset`, `even
 
 ## Configuration
 
-See [CONFIG.md](CONFIG.md) for the full reference. Key tracelog-specific options: `logDir`, `logFilePrefix`, `logRotationSchedule`, `maxLocalRetentionDays`, `maxBufferSize`, `s3Bucket`, `s3GzipCompleted`, `s3GzipCurrent`.
+See [CONFIG.md](CONFIG.md) for the full reference. Key tracelog-specific options: `sink`, `sinkBatchSize`, `sinkMaxQueueSize`, `logDir`, `logFilePrefix`, `logRotationSchedule`, `maxLocalRetentionDays`, `maxBufferSize`, `s3Bucket`, `s3GzipCompleted`, `s3GzipCurrent`.
 
 ## Removed from upstream
 

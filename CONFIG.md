@@ -4,6 +4,22 @@ All options can be set via `require('@redthreadlabs/tracelog').start({...})`, vi
 
 ---
 
+## Sink
+
+Where batches go. The file sink (the default) writes the JSONL files below and
+optionally ships them to S3. The callback sink hands each batch to an
+in-process handler registered with `apm.onBatch()` and writes nothing to disk.
+`both` runs the file sink exactly as with `file` and also hands every batch to
+the handler.
+
+| Option | Env Var | Default | Description |
+|--------|---------|---------|-------------|
+| `sink` | `TRACELOG_SINK` | `file` | `file`, `callback` or `both`. An invalid value falls back to `file` with a warning. |
+| `sinkBatchSize` | `TRACELOG_SINK_BATCH_SIZE` | `500` | Callback sink: deliver a batch as soon as this many records are queued (otherwise on the flush cadence, `logFlushIntervalMs`). Also the most records one handler call receives. |
+| `sinkMaxQueueSize` | `TRACELOG_SINK_MAX_QUEUE_SIZE` | `5000` | Callback sink: the queue's bound, across all channels. Beyond it the oldest record is dropped and counted in `apm.sinkDropCount`. Records wait in this queue until a handler is registered. |
+
+See [README: Direct sink](README.md#direct-sink) for the handler.
+
 ## Output & rotation
 
 | Option | Env Var | Default | Description |
@@ -11,7 +27,7 @@ All options can be set via `require('@redthreadlabs/tracelog').start({...})`, vi
 | `logDir` | `TRACELOG_LOG_DIR` | `.` (cwd) | Directory for JSONL output files (see [File naming](#file-naming)) |
 | `logFilePrefix` | `TRACELOG_LOG_FILE_PREFIX` | `tracelog` | Filename prefix (files are named `{prefix}-{date}.jsonl`) |
 | `logMaxFileSize` | `TRACELOG_LOG_MAX_FILE_SIZE` | `104857600` (100MB) | Rotate when file exceeds this size in bytes |
-| `logFlushIntervalMs` | — | `1000` | How often to flush the write buffer (ms) |
+| `logFlushIntervalMs` | — | `1000` | The flush cadence (ms): how often the file sink writes its buffer and the callback sink delivers a batch |
 | `logRotationSchedule` | `TRACELOG_LOG_ROTATION_SCHEDULE` | `daily` | Time-based rotation: `daily`, `hourly` |
 | `maxLocalRetentionDays` | `TRACELOG_MAX_LOCAL_RETENTION_DAYS` | `0` (disabled) | Auto-delete local log files older than N days on rotation. `0` disables cleanup. |
 | `maxBufferSize` | `TRACELOG_MAX_BUFFER_SIZE` | `10000` | Max events buffered in memory before dropping oldest. Prevents unbounded memory growth. |

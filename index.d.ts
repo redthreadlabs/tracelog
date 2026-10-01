@@ -12,7 +12,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { Connect } from './types/connect';
 import { AwsLambda } from './types/aws-lambda';
-import type { RecordContext } from '@redthreadlabs/tracelog-schema';
+import type { RecordContext, RecordKind } from '@redthreadlabs/tracelog-schema';
 
 declare namespace apm {
   // Agent API
@@ -60,6 +60,30 @@ declare namespace apm {
 
     // Channels — route records to separate JSONL files
     getChannel (name: string): Channel;
+
+    // Direct sink — batches to an in-process handler (config `sink`)
+    /**
+     * Register the callback sink's batch handler. Used with `sink: 'callback'`
+     * or `'both'` (`TRACELOG_SINK`); with `'file'` the handler receives
+     * nothing. Call it before or after `start()` — a preloaded agent starts
+     * before the app's modules exist, so the handler usually arrives later;
+     * until then records wait in the bounded queue (`sinkMaxQueueSize`).
+     *
+     * The handler is called once per batch per channel: when the queue holds
+     * `sinkBatchSize` records, on the flush cadence (`logFlushIntervalMs`),
+     * and on `flush()`/`destroy()`. If it returns a promise, the next batch
+     * waits for it; a throw or rejection is logged and that batch is not
+     * retried.
+     *
+     * `onBatch(null)` removes the handler, as does calling the returned
+     * function.
+     */
+    onBatch (handler: BatchHandler | null): () => void;
+    /**
+     * Records the callback sink has dropped, oldest first, because its queue
+     * was full. Counts since `start()`; 0 with the file sink.
+     */
+    readonly sinkDropCount: number;
 
     // Distributed Tracing
     currentTraceparent: string | null;
@@ -320,6 +344,17 @@ declare namespace apm {
     maxBufferSize?: number;
 
     /**
+     * Where batches go: `'file'` (JSONL files, optionally shipped to S3 —
+     * the default), `'callback'` (the handler set with `apm.onBatch()`;
+     * nothing is written to disk), or `'both'`. Env: `TRACELOG_SINK`.
+     */
+    sink?: 'file' | 'callback' | 'both';
+    /** Callback sink: deliver a batch as soon as this many records queue. Default 500. */
+    sinkBatchSize?: number;
+    /** Callback sink: queue bound across channels; beyond it the oldest record is dropped and counted. Default 5000. */
+    sinkMaxQueueSize?: number;
+
+    /**
      * Name of the default channel — the first segment of local filenames
      * and S3 keys for records not routed elsewhere. Default: 'default'.
      */
@@ -356,6 +391,36 @@ declare namespace apm {
      */
     writeRecordOrigin (origin: unknown): void;
   }
+
+  /**
+   * One record in a callback-sink batch. `kind` is the record's kind (the
+   * key the file sink writes it under: `{ "<kind>": record }`), or
+   * `'metadata'` for a client origin written with
+   * `Channel.writeRecordOrigin`. `record` is the record exactly as the file
+   * sink would write it (truncated, JSON-safe, epoch-µs timestamps).
+   */
+  interface SinkRecord {
+    kind: RecordKind | 'metadata';
+    record: { [field: string]: any };
+  }
+
+  /**
+   * The writer's origin for a batch: the object the file sink writes as each
+   * file's `metadata` header (service, process, system, cloud, labels, after
+   * the metadata filters), with `channel` naming the batch's channel. Null
+   * when a metadata filter drops it.
+   */
+  interface SinkOrigin {
+    channel: string;
+    service: { name: string; version?: string; environment?: string; [field: string]: any };
+    [field: string]: any;
+  }
+
+  /**
+   * A callback-sink batch handler: all records in one call share a channel
+   * (`origin.channel`), in arrival order.
+   */
+  type BatchHandler = (records: SinkRecord[], origin: SinkOrigin | null) => void | Promise<void>;
 
   interface TransactionChannelRule {
     /** Wildcard pattern matched against the transaction name. */
