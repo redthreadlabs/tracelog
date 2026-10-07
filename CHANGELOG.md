@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.21.1
+
+- deps: `@redthreadlabs/tracelog-schema` ^0.6.0 -> ^0.7.0. The context
+  sanitizer keeps a visitor that carries `kind` alone (no persistent id).
+
 ## 1.21.0
 
 - A direct sink. `sink: 'file' | 'callback' | 'both'` (`TRACELOG_SINK`,
